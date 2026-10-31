@@ -24,6 +24,7 @@ namespace Application.Interfaces.Services.Auth
             CancellationToken cancellationToken
         );
         Task<OperationResult> ChangePasswordAsync(
+            Guid currentUserId,
             ChangePasswordRequestDto request,
             CancellationToken cancellationToken
         );

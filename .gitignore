@@ -25,3 +25,4 @@ API/.env
 # Chặn các file cấu hình publish của Visual Studio
 **/PublishProfiles/
 **/ServiceDependencies/
+.claude/

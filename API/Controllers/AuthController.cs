@@ -134,6 +134,7 @@ public class AuthController : ApiController
     // CHANGE PASSWORD
     // =========================
 
+    [Authorize]
     [HttpPost("password/change")]
     [EnableRateLimiting(RateLimiterExtensions.LoginPolicy)]
     public async Task<IActionResult> ChangePassword(
@@ -141,7 +142,11 @@ public class AuthController : ApiController
         CancellationToken cancellationToken
     )
     {
-        var result = await _authService.ChangePasswordAsync(request, cancellationToken);
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userId, out var currentUserId))
+            return Unauthorized();
+
+        var result = await _authService.ChangePasswordAsync(currentUserId, request, cancellationToken);
         return HandleResult(result);
     }
 

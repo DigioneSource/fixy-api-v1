@@ -552,6 +552,7 @@ namespace Infrastructure.Services.Auth
         }
 
         public async Task<OperationResult> ChangePasswordAsync(
+            Guid currentUserId,
             ChangePasswordRequestDto request,
             CancellationToken ct
         )
@@ -560,6 +561,10 @@ namespace Infrastructure.Services.Auth
 
             if (user == null)
                 return OperationResult.Failure("User not found");
+
+            // Chỉ được đổi mật khẩu của chính tài khoản đang đăng nhập.
+            if (user.Id != currentUserId)
+                return OperationResult.Failure("Bạn chỉ có thể đổi mật khẩu của chính mình");
 
             if (!_passwordHasher.VerifyPassword(request.OldPassword, user.PasswordHash))
                 return OperationResult.Failure("Old password is not correct");
