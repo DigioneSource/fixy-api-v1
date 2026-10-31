@@ -12,7 +12,9 @@ using Application.Interfaces.Services.Media;
 using Domain.Entity;
 using Domain.Enum;
 using Domain.Exceptions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Infrastructure.Services
 {
@@ -36,6 +38,8 @@ namespace Infrastructure.Services
         private readonly IPayoutRequestRepository _payoutRequestRepository;
         private readonly IWorkerPayoutAccountRepository _workerPayoutAccountRepository;
         private readonly IWalletTransactionRepository _walletTransactionRepository;
+        private readonly IFaceRecognitionService _faceRecognitionService;
+        private readonly ILogger<WorkerProfileService> _logger;
 
         public WorkerProfileService(
             IUserRepository userRepository,
@@ -53,7 +57,9 @@ namespace Infrastructure.Services
             IBookingRepository bookingRepository,
             IPayoutRequestRepository payoutRequestRepository,
             IWorkerPayoutAccountRepository workerPayoutAccountRepository,
-            IWalletTransactionRepository walletTransactionRepository
+            IWalletTransactionRepository walletTransactionRepository,
+            IFaceRecognitionService faceRecognitionService,
+            ILogger<WorkerProfileService> logger
         )
         {
             _userRepository = userRepository;
@@ -72,6 +78,8 @@ namespace Infrastructure.Services
             _payoutRequestRepository = payoutRequestRepository;
             _workerPayoutAccountRepository = workerPayoutAccountRepository;
             _walletTransactionRepository = walletTransactionRepository;
+            _faceRecognitionService = faceRecognitionService;
+            _logger = logger;
         }
 
         public async Task<OperationResult<PagedResponse<WorkerProfileDto>>> GetPagedWorkerProfiles(
@@ -542,10 +550,18 @@ namespace Infrastructure.Services
                     var faceUrl = await _blobService.UploadImageAsync(dto.FaceSelfieUpload);
                     uploadedUrls.Add(faceUrl);
 
+                    // Điểm khớp do máy chủ tự tính, không nhận từ client
+                    var faceResult = await ComputeFaceMatchAsync(
+                        dto.IdentificationUploads.FirstOrDefault(),
+                        dto.FaceSelfieUpload,
+                        user.Id,
+                        cancellationToken
+                    );
+
                     user.FaceImageUrl = faceUrl;
-                    user.IsFaceMatched = true;
-                    user.FaceMatchScore = dto.FaceMatchScore;
-                    user.FaceVerifiedAt = DateTime.UtcNow;
+                    user.IsFaceMatched = faceResult.IsMatch;
+                    user.FaceMatchScore = faceResult.Score;
+                    user.FaceVerifiedAt = faceResult.Score.HasValue ? DateTime.UtcNow : null;
                 }
 
                 // Create Certificates
@@ -1064,10 +1080,20 @@ namespace Infrastructure.Services
                     var faceUrl = await _blobService.UploadImageAsync(dto.FaceSelfie);
                     uploadedUrls.Add(faceUrl);
 
+                    // Điểm khớp do máy chủ tự tính, không nhận từ client
+                    var faceResult = await ComputeFaceMatchAsync(
+                        dto.Images.FirstOrDefault(),
+                        dto.FaceSelfie,
+                        workerId,
+                        cancellationToken
+                    );
+
                     workerProfile.User.FaceImageUrl = faceUrl;
-                    workerProfile.User.IsFaceMatched = true;
-                    workerProfile.User.FaceMatchScore = dto.FaceMatchScore;
-                    workerProfile.User.FaceVerifiedAt = DateTime.UtcNow;
+                    workerProfile.User.IsFaceMatched = faceResult.IsMatch;
+                    workerProfile.User.FaceMatchScore = faceResult.Score;
+                    workerProfile.User.FaceVerifiedAt = faceResult.Score.HasValue
+                        ? DateTime.UtcNow
+                        : null;
                 }
 
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
@@ -1560,6 +1586,62 @@ namespace Infrastructure.Services
             {
                 await _unitOfWork.RollbackTransactionAsync();
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// So khớp ảnh selfie với ảnh CCCD mặt trước (ảnh đầu tiên trong danh sách giấy tờ).
+        /// Lỗi hoặc dịch vụ chưa sẵn sàng => Score = null để admin duyệt tay, không chặn đăng ký.
+        /// </summary>
+        private async Task<(double? Score, bool IsMatch)> ComputeFaceMatchAsync(
+            IFormFile? cardFront,
+            IFormFile? selfie,
+            Guid userId,
+            CancellationToken cancellationToken
+        )
+        {
+            if (cardFront == null || selfie == null)
+            {
+                _logger.LogWarning(
+                    "Không đủ ảnh CCCD mặt trước/selfie để so khớp khuôn mặt cho user {UserId}; cần admin duyệt tay",
+                    userId
+                );
+                return (null, false);
+            }
+
+            try
+            {
+                using var cardStream = new MemoryStream();
+                using var selfieStream = new MemoryStream();
+                await cardFront.CopyToAsync(cardStream, cancellationToken);
+                await selfie.CopyToAsync(selfieStream, cancellationToken);
+
+                var result = await _faceRecognitionService.CompareFacesAsync(
+                    cardStream,
+                    selfieStream,
+                    cancellationToken
+                );
+
+                if (!result.IsBothFaceFound)
+                {
+                    _logger.LogWarning(
+                        "So khớp khuôn mặt không cho kết quả cho user {UserId}: {Message}; cần admin duyệt tay",
+                        userId,
+                        result.Message
+                    );
+                    return (null, false);
+                }
+
+                return (result.Similarity, result.IsMatch);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Lỗi khi so khớp khuôn mặt cho user {UserId}; cần admin duyệt tay",
+                    userId
+                );
+                return (null, false);
             }
         }
     }

@@ -23,7 +23,6 @@ namespace Application.DTOs.WorkerProfile
             new CreateAddressRequestDto();
         public List<IFormFile> IdentificationUploads { get; set; } = new List<IFormFile>();
         public IFormFile? FaceSelfieUpload { get; set; }
-        public double? FaceMatchScore { get; set; }
         public List<IFormFile> PortfolioUploads { get; set; } = new List<IFormFile>();
 
         public List<WorkerServiceRegisterRequestDto> WorkerService { get; set; } =
