@@ -94,6 +94,17 @@ namespace API.Controllers
                 cancellationToken
             );
 
+            // CEO 31/10: chỉ chính chủ hoặc ADMIN thấy số điện thoại/email của KTV.
+            if (result.IsSuccess && result.Data != null)
+            {
+                var isOwner = result.Data.UserId == GetUserId();
+                if (!isOwner && !User.IsInRole("ADMIN"))
+                {
+                    result.Data.Phone = string.Empty;
+                    result.Data.Email = string.Empty;
+                }
+            }
+
             return HandleResult(result);
         }
 

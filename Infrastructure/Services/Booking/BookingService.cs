@@ -127,6 +127,23 @@ namespace Infrastructure.Services.Booking
             );
         }
 
+        private bool IsAdmin => _currentUserService.IsInRole("ADMIN");
+
+        /// <summary>
+        /// CEO 31/10: không trả số điện thoại của khách/KTV cho bên kia — liên lạc qua ứng dụng.
+        /// Chỉ ADMIN thấy số điện thoại trong đơn.
+        /// </summary>
+        private void ApplyContactPrivacy(BookingDetailDto dto)
+        {
+            if (IsAdmin)
+            {
+                return;
+            }
+
+            dto.WorkerPhone = null;
+            dto.CustomerPhone = null;
+        }
+
         // =========================================================
         // GET BY ID
         // =========================================================
@@ -147,6 +164,7 @@ namespace Infrastructure.Services.Booking
             }
 
             var dto = _mapper.Map<BookingDetailDto>(booking);
+            ApplyContactPrivacy(dto);
             var requestImages = await _mediaRepository.GetBookingRequestImagesAsync(
                 bookingId,
                 cancellationToken
@@ -696,6 +714,7 @@ namespace Infrastructure.Services.Booking
             );
 
             var dtos = _mapper.Map<List<BookingDetailDto>>(items);
+            dtos.ForEach(ApplyContactPrivacy);
 
             return OperationResult<PagedResponse<BookingDetailDto>>.Success(
                 new PagedResponse<BookingDetailDto>
@@ -735,6 +754,7 @@ namespace Infrastructure.Services.Booking
                 cancellationToken
             );
             var dtos = _mapper.Map<List<BookingDetailDto>>(items);
+            dtos.ForEach(ApplyContactPrivacy);
 
             var response = new PagedResponse<BookingDetailDto>
             {
@@ -800,7 +820,7 @@ namespace Infrastructure.Services.Booking
                 {
                     WorkerId = q.WorkerProfileId,
                     FullName = q.Worker?.User?.FullName ?? string.Empty,
-                    Phone = q.Worker?.User?.Phone ?? string.Empty,
+                    Phone = IsAdmin ? q.Worker?.User?.Phone ?? string.Empty : string.Empty,
                     AvatarUrl = q.Worker?.User?.AvatarUrl,
                     RatingAvg = q.Worker?.RatingAvg ?? 0,
                     DistanceKm = q.DistanceKm,

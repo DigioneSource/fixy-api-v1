@@ -163,7 +163,8 @@ namespace Infrastructure.Services.Worker
 
                     FullName = booking.WorkerProfile.User.FullName,
 
-                    Phone = booking.WorkerProfile.User.Phone,
+                    // CEO 31/10: không trả số điện thoại KTV cho khách — gọi qua ứng dụng.
+                    Phone = null,
 
                     RatingAvg = booking.WorkerProfile.RatingAvg,
                 };
