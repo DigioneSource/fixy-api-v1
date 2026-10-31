@@ -12,6 +12,8 @@ namespace Application.Interfaces.Services.Media
         );
         Task<OperationResult<MediaDto>> GetMediaByIdAsync(
             Guid mediaId,
+            Guid requesterId,
+            bool requesterIsAdmin,
             CancellationToken cancellationToken = default
         );
         Task<OperationResult<List<MediaDto>>> GetMediaByOwnerIdAsync(

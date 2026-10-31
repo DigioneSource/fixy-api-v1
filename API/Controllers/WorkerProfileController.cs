@@ -4,6 +4,8 @@ using Application.DTOs.WorkerProfile.WorkerCertificate;
 using Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using API.Extensions;
 
 namespace API.Controllers
 {
@@ -296,7 +298,9 @@ namespace API.Controllers
             return HandleResult(result);
         }
 
-        [AllowAnonymous]
+        // Tốn CPU (mô hình ONNX) — bắt buộc đăng nhập và giới hạn tần suất.
+        [Authorize]
+        [EnableRateLimiting(RateLimiterExtensions.OtpSendPolicy)]
         [HttpPost("verify-face")]
         public async Task<IActionResult> VerifyFace(
             [FromForm] VerifyFaceRequestDto dto,

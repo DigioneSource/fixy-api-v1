@@ -25,7 +25,12 @@ namespace API.Controllers
         [HttpGet("{id:guid}")]
         public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
         {
-            var result = await _mediaService.GetMediaByIdAsync(id, cancellationToken);
+            var result = await _mediaService.GetMediaByIdAsync(
+                id,
+                GetUserId(),
+                User.IsInRole("ADMIN"),
+                cancellationToken
+            );
             return HandleResult(result);
         }
 

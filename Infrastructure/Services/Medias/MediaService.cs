@@ -103,11 +103,23 @@ namespace Infrastructure.Services.Medias
 
         public async Task<OperationResult<MediaDto>> GetMediaByIdAsync(
             Guid mediaId,
+            Guid requesterId,
+            bool requesterIsAdmin,
             CancellationToken cancellationToken = default
         )
         {
             var media = await _mediaRepository.GetByIdAsync(mediaId, cancellationToken);
             if (media == null)
+            {
+                return OperationResult<MediaDto>.Failure("Media not found");
+            }
+
+            // Ảnh giấy tờ tuỳ thân (CCCD) chỉ chính chủ hoặc ADMIN được xem.
+            if (
+                media.Category == MediaCategory.Identification
+                && media.UploadedById != requesterId
+                && !requesterIsAdmin
+            )
             {
                 return OperationResult<MediaDto>.Failure("Media not found");
             }
