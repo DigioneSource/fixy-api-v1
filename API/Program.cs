@@ -8,6 +8,7 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using Infrastructure;
 using Infrastructure.Hubs;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Events;
@@ -104,6 +105,22 @@ builder.Services.AddInfrastructure(builder.Configuration);
 // SignalR
 builder.Services.AddSignalR();
 
+// Danh sách origin web được phép gọi API (app di động không cần CORS)
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?.Where(o => !string.IsNullOrWhiteSpace(o))
+    .Select(o => o.Trim().TrimEnd('/'))
+    .ToList() ?? new List<string>();
+
+if (allowedOrigins.Count == 0)
+{
+    allowedOrigins.AddRange(new[] { "https://tayzen.vn", "https://admin.tayzen.vn" });
+}
+
+if (builder.Environment.IsDevelopment())
+{
+    allowedOrigins.Add("http://localhost:3000");
+}
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(
@@ -111,15 +128,21 @@ builder.Services.AddCors(options =>
         policy =>
         {
             policy
-                .WithOrigins(
-                    "http://localhost:3000",
-                    "https://fixy-fe-v1.vercel.app"
-                )
+                .WithOrigins(allowedOrigins.Distinct().ToArray())
                 .AllowAnyHeader()
                 .AllowAnyMethod()
                 .AllowCredentials();
         }
     );
+});
+
+// Đứng sau Cloudflare / reverse proxy: lấy IP và scheme thật từ X-Forwarded-*
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Proxy chạy trong mạng docker nên không biết trước IP; cổng gốc không được mở ra Internet trực tiếp
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
 });
 
 // Add Rate Limiting
@@ -128,8 +151,14 @@ var app = builder.Build();
 
 // Configure the HTTP request pipeline
 
-app.UseSwagger();
-app.UseSwaggerUI();
+app.UseForwardedHeaders();
+
+// Swagger chỉ bật ở Development hoặc khi cấu hình EnableSwagger=true
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("EnableSwagger"))
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseHttpsRedirection();
 

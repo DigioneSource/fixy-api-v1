@@ -4,6 +4,8 @@ using Application.Interfaces.Services.Auth;
 using Application.Interfaces.Services.Email;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using API.Extensions;
 
 namespace API.Controllers;
 
@@ -26,6 +28,7 @@ public class AuthController : ApiController
     // =========================
 
     [HttpPost("otp/send")]
+    [EnableRateLimiting(RateLimiterExtensions.OtpSendPolicy)]
     public async Task<IActionResult> SendOtp(
         [FromBody] SendOtpRequestDto request,
         CancellationToken cancellationToken
@@ -41,6 +44,7 @@ public class AuthController : ApiController
     }
 
     [HttpPost("otp/verify")]
+    [EnableRateLimiting(RateLimiterExtensions.OtpVerifyPolicy)]
     public async Task<IActionResult> VerifyOtp(
         [FromBody] VerifyOtpRequestDto request,
         CancellationToken cancellationToken
@@ -60,6 +64,7 @@ public class AuthController : ApiController
     // =========================
 
     [HttpPost("register")]
+    [EnableRateLimiting(RateLimiterExtensions.OtpVerifyPolicy)]
     public async Task<IActionResult> Register(
         [FromBody] RegisterRequestDto request,
         CancellationToken cancellationToken
@@ -74,6 +79,7 @@ public class AuthController : ApiController
     // =========================
 
     [HttpPost("login")]
+    [EnableRateLimiting(RateLimiterExtensions.LoginPolicy)]
     public async Task<IActionResult> Login(
         [FromBody] LoginRequestDto request,
         CancellationToken cancellationToken
@@ -88,6 +94,7 @@ public class AuthController : ApiController
     // =========================
 
     [HttpPost("login/google")]
+    [EnableRateLimiting(RateLimiterExtensions.LoginPolicy)]
     public async Task<IActionResult> LoginGoogle(
         [FromBody] GoogleLoginRequestDto request,
         CancellationToken cancellationToken
@@ -102,6 +109,7 @@ public class AuthController : ApiController
     // =========================
 
     [HttpPost("login/facebook")]
+    [EnableRateLimiting(RateLimiterExtensions.LoginPolicy)]
     public async Task<IActionResult> LoginFacebook([FromBody] FacebookLoginRequestDto request,CancellationToken cancellationToken)
     {
         var result = await _authService.FacebookLoginAsync(request, cancellationToken);
@@ -127,6 +135,7 @@ public class AuthController : ApiController
     // =========================
 
     [HttpPost("password/change")]
+    [EnableRateLimiting(RateLimiterExtensions.LoginPolicy)]
     public async Task<IActionResult> ChangePassword(
         [FromBody] ChangePasswordRequestDto request,
         CancellationToken cancellationToken
@@ -140,6 +149,7 @@ public class AuthController : ApiController
     // RESET PASSWORD
     // =========================
     [HttpPost("reset-password")]
+    [EnableRateLimiting(RateLimiterExtensions.PasswordResetPolicy)]
     public async Task<IActionResult> ResetPassword(
         ResetPasswordRequestDto request,
         CancellationToken cancellationToken
