@@ -26,6 +26,18 @@ namespace Application.DTOs.Booking
         public string? PaymentMethodName { get; set; }
         public long? EstimatedPrice { get; set; }
         public long? FinalPrice { get; set; }
+
+        /// <summary>Phí nền tảng chưa thuế. Chỉ trả cho KTV của đơn và ADMIN.</summary>
+        public long? PlatformFee { get; set; }
+
+        /// <summary>VAT trên phí nền tảng. Chỉ trả cho KTV của đơn và ADMIN.</summary>
+        public long? PlatformFeeVat { get; set; }
+
+        /// <summary>KTV thực nhận. Chỉ trả cho KTV của đơn và ADMIN.</summary>
+        public long? WorkerNet { get; set; }
+
+        /// <summary>Phí huỷ (nếu có).</summary>
+        public long? CancellationFee { get; set; }
         public string? CancelReason { get; set; }
         public DateTime? CancelledAt { get; set; }
         public DateTime? CompletedAt { get; set; }

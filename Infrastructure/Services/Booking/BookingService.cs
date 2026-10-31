@@ -33,6 +33,7 @@ namespace Infrastructure.Services.Booking
         private readonly INotificationService _notificationService;
         private readonly ILogger<BookingService> _logger;
         private readonly IServiceProvider _serviceProvider;
+        private readonly IBookingFinanceService _bookingFinanceService;
 
         private static readonly Dictionary<BookingStatus, List<BookingStatus>> AllowedTransitions = new()
         {
@@ -59,9 +60,12 @@ namespace Infrastructure.Services.Booking
             INotificationService notificationService,
             IMapper mapper,
             ILogger<BookingService> logger,
-            IServiceProvider serviceProvider
+            IServiceProvider serviceProvider,
+            IBookingFinanceService bookingFinanceService
         )
         {
+            _bookingFinanceService =
+                bookingFinanceService ?? throw new ArgumentNullException(nameof(bookingFinanceService));
             _bookingRepository =
                 bookingRepository ?? throw new ArgumentNullException(nameof(bookingRepository));
             _workerProfileRepository =
@@ -144,6 +148,14 @@ namespace Infrastructure.Services.Booking
             dto.CustomerPhone = null;
         }
 
+        /// <summary>Phí nền tảng / KTV thực nhận chỉ trả cho KTV của đơn và ADMIN.</summary>
+        private static void HideWorkerFinance(BookingDetailDto dto)
+        {
+            dto.PlatformFee = null;
+            dto.PlatformFeeVat = null;
+            dto.WorkerNet = null;
+        }
+
         // =========================================================
         // GET BY ID
         // =========================================================
@@ -165,6 +177,14 @@ namespace Infrastructure.Services.Booking
 
             var dto = _mapper.Map<BookingDetailDto>(booking);
             ApplyContactPrivacy(dto);
+            var isBookingWorker =
+                booking.WorkerProfile != null
+                && Guid.TryParse(_currentUserService.UserId, out var viewerId)
+                && booking.WorkerProfile.UserId == viewerId;
+            if (!IsAdmin && !isBookingWorker)
+            {
+                HideWorkerFinance(dto);
+            }
             var requestImages = await _mediaRepository.GetBookingRequestImagesAsync(
                 bookingId,
                 cancellationToken
@@ -391,73 +411,30 @@ namespace Infrastructure.Services.Booking
                         }
                     }
 
-                    // Add to wallet worker income after booking completed and paid
-                    try
+                    await _bookingRepository.LoadWorkerAndPaymentOrderAsync(booking, cancellationToken);
+
+                    if (booking.WorkerProfile != null)
                     {
-                        _logger.LogInformation("Starting wallet credit logic for Booking {BookingId}", bookingId);
-                        await _bookingRepository.LoadWorkerAndPaymentOrderAsync(booking, cancellationToken);
-                        
-                        if (booking.WorkerProfile == null)
-                        {
-                            _logger.LogWarning("WorkerProfile is null for Booking {BookingId}", bookingId);
-                        }
-                        else
-                        {
-                            // Increase the number of completed orders for the worker
-                            booking.WorkerProfile.TotalOrders += 1;
-                            _workerProfileRepository.Update(booking.WorkerProfile);
-
-                            if (booking.PaymentOrder == null)
-                            {
-                                _logger.LogWarning("PaymentOrder is null for Booking {BookingId}", bookingId);
-                            }
-                            else
-                            {
-                                // Cash payments stay Pending until the service is completed.
-                                // Now that the booking is done, mark Cash as Paid.
-                                if (booking.PaymentOrder.Method == PaymentMethod.Cash
-                                    && booking.PaymentOrder.Status == PaymentStatus.Pending)
-                                {
-                                    booking.PaymentOrder.Status = PaymentStatus.Paid;
-                                    booking.PaymentOrder.PaidAt = DateTime.UtcNow;
-                                    var paymentOrderRepo = _serviceProvider.GetRequiredService<IPaymentOrderRepository>();
-                                    paymentOrderRepo.Update(booking.PaymentOrder);
-                                }
-
-                                if (booking.PaymentOrder.Status == PaymentStatus.Paid)
-                                {
-                                    var workerUserId = booking.WorkerProfile.UserId;
-                                    var paymentOrderId = booking.PaymentOrder.Id;
-                                    var amount = booking.PaymentOrder.FinalAmount;
-
-                                    var walletService = _serviceProvider.GetRequiredService<IWalletService>();
-                                    var result = await walletService.AddWorkerIncomeAsync(
-                                        workerUserId,
-                                        paymentOrderId,
-                                        amount,
-                                        cancellationToken
-                                    );
-
-                                    if (result.IsSuccess)
-                                    {
-                                        _logger.LogInformation("Successfully added income to worker wallet for Booking {BookingId}", bookingId);
-                                    }
-                                    else
-                                    {
-                                        _logger.LogWarning("Failed to add income to worker wallet for Booking {BookingId}: {Message}", bookingId, result.Message);
-                                    }
-                                }
-                                else
-                                {
-                                    _logger.LogWarning("PaymentOrder Status is not Paid (Status: {Status}) for Booking {BookingId}", booking.PaymentOrder.Status, bookingId);
-                                }
-                            }
-                        }
+                        // Increase the number of completed orders for the worker
+                        booking.WorkerProfile.TotalOrders += 1;
+                        _workerProfileRepository.Update(booking.WorkerProfile);
                     }
-                    catch (Exception ex)
+
+                    // Cash payments stay Pending until the service is completed.
+                    // Now that the booking is done, mark Cash as Paid.
+                    if (booking.PaymentOrder != null
+                        && booking.PaymentOrder.Method == PaymentMethod.Cash
+                        && booking.PaymentOrder.Status == PaymentStatus.Pending)
                     {
-                        _logger.LogError(ex, "Error occurred while adding income to worker wallet for Booking {BookingId}", bookingId);
+                        booking.PaymentOrder.Status = PaymentStatus.Paid;
+                        booking.PaymentOrder.PaidAt = DateTime.UtcNow;
+                        var paymentOrderRepo = _serviceProvider.GetRequiredService<IPaymentOrderRepository>();
+                        paymentOrderRepo.Update(booking.PaymentOrder);
                     }
+
+                    // CEO 31/10: chốt phí nền tảng 30% + VAT 10% và quyết toán ví KTV
+                    // trong cùng lần lưu với trạng thái Completed (một transaction).
+                    await _bookingFinanceService.SettleCompletedBookingAsync(booking, cancellationToken);
                 },
                 cancellationToken
             );
@@ -760,6 +737,7 @@ namespace Infrastructure.Services.Booking
             );
             var dtos = _mapper.Map<List<BookingDetailDto>>(items);
             dtos.ForEach(ApplyContactPrivacy);
+            dtos.ForEach(HideWorkerFinance);
 
             var response = new PagedResponse<BookingDetailDto>
             {
@@ -947,7 +925,16 @@ namespace Infrastructure.Services.Booking
 
             _bookingRepository.Update(booking);
 
-            await _unitOfWork.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException ex)
+            {
+                // Ví KTV dùng RowVersion: hai thao tác ghi cùng lúc thì một bên phải thử lại.
+                _logger.LogWarning(ex, "Concurrency conflict while transitioning booking {BookingId}", bookingId);
+                return OperationResult.Failure("Dữ liệu vừa thay đổi, vui lòng thử lại.");
+            }
 
             await _bookingHubService.SendStatusUpdateAsync(
                 booking.Id,

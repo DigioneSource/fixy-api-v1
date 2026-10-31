@@ -42,6 +42,25 @@ namespace Domain.Entity
         public long? FinalPrice { get; set; }
 
         // =========================
+        // Platform fee (CEO 31/10/2026 — mô hình trung gian)
+        // =========================
+
+        /// <summary>Phí nền tảng chưa thuế = round(30% × giá dịch vụ trước voucher). Chốt khi đơn hoàn thành.</summary>
+        public long? PlatformFee { get; set; }
+
+        /// <summary>Thuế GTGT trên phí nền tảng = round(10% × PlatformFee).</summary>
+        public long? PlatformFeeVat { get; set; }
+
+        /// <summary>KTV thực nhận = giá dịch vụ − PlatformFee − PlatformFeeVat.</summary>
+        public long? WorkerNet { get; set; }
+
+        /// <summary>Đơn tiền mặt: số tiền (phí + VAT) đang tạm giữ trong ví KTV từ lúc nhận đơn.</summary>
+        public long? HeldPlatformFee { get; set; }
+
+        /// <summary>Phí huỷ (khách huỷ từ lúc KTV xuất phát). Đơn tiền mặt: chỉ là số phải thu.</summary>
+        public long? CancellationFee { get; set; }
+
+        // =========================
         // E-Contract Terms
         // =========================
 

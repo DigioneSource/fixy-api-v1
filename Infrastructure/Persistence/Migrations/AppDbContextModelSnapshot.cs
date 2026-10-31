@@ -107,6 +107,9 @@ namespace Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
 
+                    b.Property<long?>("CancellationFee")
+                        .HasColumnType("bigint");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("datetime2");
 
@@ -140,6 +143,9 @@ namespace Infrastructure.Persistence.Migrations
                     b.Property<long?>("FinalPrice")
                         .HasColumnType("bigint");
 
+                    b.Property<long?>("HeldPlatformFee")
+                        .HasColumnType("bigint");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -148,6 +154,12 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.Property<double>("Lng")
                         .HasColumnType("float");
+
+                    b.Property<long?>("PlatformFee")
+                        .HasColumnType("bigint");
+
+                    b.Property<long?>("PlatformFeeVat")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid?>("ReorderFromId")
                         .HasColumnType("uniqueidentifier");
@@ -177,6 +189,9 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("UpdatedDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<long?>("WorkerNet")
+                        .HasColumnType("bigint");
 
                     b.Property<Guid?>("WorkerProfileId")
                         .HasColumnType("uniqueidentifier");
@@ -1010,21 +1025,21 @@ namespace Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1f7d8c1-3e21-4a8c-9b11-2d7f4c5e1001"),
-                            CreatedDate = new DateTime(2026, 10, 31, 13, 1, 21, 121, DateTimeKind.Utc).AddTicks(5050),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 31, 55, 739, DateTimeKind.Utc).AddTicks(5820),
                             IsActive = true,
                             Name = "ADMIN"
                         },
                         new
                         {
                             Id = new Guid("b2e8c9d2-4f32-4b9d-8c22-3e8f5d6f2002"),
-                            CreatedDate = new DateTime(2026, 10, 31, 13, 1, 21, 121, DateTimeKind.Utc).AddTicks(5050),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 31, 55, 739, DateTimeKind.Utc).AddTicks(5830),
                             IsActive = true,
                             Name = "CUSTOMER"
                         },
                         new
                         {
                             Id = new Guid("c3f9d0e3-5a43-4cad-9d33-4f9a6e7f3003"),
-                            CreatedDate = new DateTime(2026, 10, 31, 13, 1, 21, 121, DateTimeKind.Utc).AddTicks(5050),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 31, 55, 739, DateTimeKind.Utc).AddTicks(5830),
                             IsActive = true,
                             Name = "WORKER"
                         });

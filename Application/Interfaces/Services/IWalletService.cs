@@ -39,12 +39,6 @@ namespace Application.Interfaces.Services
             CancellationToken cancellationToken
         );
 
-        Task<OperationResult<WalletTransactionDto>> AddWorkerIncomeAsync(
-            Guid workerId,
-            Guid paymentOrderId,
-            long amount,
-            CancellationToken cancellationToken
-        );
 
         Task<OperationResult<WalletTransactionDto>> WithdrawAsync(
             Guid walletId,

@@ -78,6 +78,8 @@ namespace Infrastructure
             var jwtSettings = configuration.GetSection("JwtSettings").Get<JwtSettings>();
             // SMTP Settings
             services.Configure<SmtpSettings>(configuration.GetSection("SmtpSettings"));
+            // Phí nền tảng 30% + VAT 10%, ký quỹ đơn tiền mặt 40% (CEO 31/10)
+            services.Configure<CommissionSettings>(configuration.GetSection(CommissionSettings.SectionName));
             // WorkerMatching Settings
             services.Configure<WorkerMatchingSettings>(
                 configuration.GetSection("WorkerMatchingSettings")
@@ -219,6 +221,7 @@ namespace Infrastructure
             services.AddScoped<IEnumService, EnumService>();
             services.AddScoped<IBookingHubService, BookingHubService>();
             services.AddScoped<IBookingService, BookingService>();
+            services.AddScoped<IBookingFinanceService, BookingFinanceService>();
             services.AddScoped<IWorkerLocationService, WorkerLocationService>();
             services.AddScoped<IGoongService, GoongService>();
             services.AddScoped<IBookingDraftService, BookingDraftService>();
