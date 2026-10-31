@@ -23,7 +23,8 @@ namespace Application.Interfaces.Services
             Guid userId,
             long amount,
             string externalId,
-            CancellationToken cancellationToken
+            CancellationToken cancellationToken,
+            WalletOwnerType ownerType = WalletOwnerType.Customer
         );
 
         Task<OperationResult<WalletTransactionDto>> PayBookingAsync(

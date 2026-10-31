@@ -130,7 +130,8 @@ public class WalletService : IWalletService
         Guid userId,
         long amount,
         string externalId,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        WalletOwnerType ownerType = WalletOwnerType.Customer
     )
     {
         if (await _walletTransactionRepository.ExistsExternalTransactionAsync(externalId))
@@ -142,7 +143,7 @@ public class WalletService : IWalletService
         {
         var wallet = await _walletRepository.GetByUserIdAsync(
             userId,
-            WalletOwnerType.Customer,
+            ownerType,
             cancellationToken
         );
 
@@ -152,7 +153,11 @@ public class WalletService : IWalletService
             var before = wallet.Balance;
 
             wallet.Balance += amount;
-            wallet.LifetimeEarned += amount;
+            // Tiền KTV nạp không phải thu nhập → không cộng LifetimeEarned của ví KTV.
+            if (ownerType == WalletOwnerType.Customer)
+            {
+                wallet.LifetimeEarned += amount;
+            }
 
             var tx = new WalletTransaction
             {

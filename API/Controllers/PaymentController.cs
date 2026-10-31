@@ -21,13 +21,27 @@ namespace API.Controllers
             _payoutService = payoutService;
         }
 
-        [Authorize(Roles = "CUSTOMER")]
+        /// <summary>
+        /// Nạp số dư ví. CEO 31/10: chỉ KTV được nạp (số dư bảo đảm cho đơn tiền mặt).
+        /// Khách hàng không được nạp ví (giữ tiền nạp trước cần giấy phép ví điện tử) —
+        /// khách vẫn dùng được số dư cũ để thanh toán đơn.
+        /// </summary>
+        [Authorize]
         [HttpPost("topup")]
         public async Task<IActionResult> CreateTopUpPayment(
             [FromBody] CreateTopupPaymentRequestDto request,
             CancellationToken cancellationToken
         )
         {
+            if (!User.IsInRole("WORKER"))
+            {
+                return HandleResult(
+                    Application.Common.OperationResult<string>.Failure(
+                        "TAYZEN không nhận nạp tiền vào ví khách hàng. Vui lòng thanh toán từng đơn."
+                    )
+                );
+            }
+
             var result = await _paymentService.CreateTopUpPaymentUrlAsync(
                 GetUserId(),
                 request.Amount,

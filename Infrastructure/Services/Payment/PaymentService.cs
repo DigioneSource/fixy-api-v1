@@ -104,7 +104,8 @@ namespace Infrastructure.Services.Payment
                 Method = method,
                 Status = PaymentStatus.Pending,
 
-                Type = PaymentOrderType.WalletTopUp,
+                // Chỉ KTV được nạp ví (controller đã chặn vai khách) → cộng vào ví KTV.
+                Type = PaymentOrderType.WorkerWalletTopUp,
             };
 
             await _paymentOrderRepository.AddAsync(order, cancellationToken);
@@ -383,6 +384,18 @@ namespace Infrastructure.Services.Payment
 
                     break;
 
+                case PaymentOrderType.WorkerWalletTopUp:
+
+                    await _walletService.TopUpAsync(
+                        order.UserId,
+                        order.FinalAmount,
+                        $"{order.Method} Topup #{order.Id}",
+                        cancellationToken,
+                        WalletOwnerType.Worker
+                    );
+
+                    break;
+
                 case PaymentOrderType.BookingPayment:
 
                     if (order.BookingId.HasValue)
@@ -573,6 +586,7 @@ namespace Infrastructure.Services.Payment
                 var notifTitle = order.Type switch
                 {
                     PaymentOrderType.WalletTopUp => "Nạp ví thành công!",
+                    PaymentOrderType.WorkerWalletTopUp => "Nạp số dư bảo đảm thành công!",
                     PaymentOrderType.WorkerDeposit => "Nạp cọc kích hoạt thành công!",
                     _ => "Thanh toán thành công!"
                 };
@@ -580,6 +594,7 @@ namespace Infrastructure.Services.Payment
                 var notifBody = order.Type switch
                 {
                     PaymentOrderType.WalletTopUp => $"Bạn đã nạp thành công {order.FinalAmount:N0}đ vào Ví Fixy qua PayOS.",
+                    PaymentOrderType.WorkerWalletTopUp => $"Bạn đã nạp {order.FinalAmount:N0}đ vào ví KTV. Số dư này bảo đảm phí nền tảng cho đơn tiền mặt.",
                     PaymentOrderType.WorkerDeposit => $"Bạn đã nạp cọc ký quỹ {order.FinalAmount:N0}đ thành công. Tài khoản đã được kích hoạt nhận lịch hẹn Spa!",
                     _ => $"Đơn dịch vụ của bạn đã được thanh toán {order.FinalAmount:N0}đ và đang chờ Kỹ thuật viên tiếp nhận."
                 };
