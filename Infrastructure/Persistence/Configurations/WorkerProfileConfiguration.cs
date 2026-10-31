@@ -25,6 +25,7 @@ namespace Infrastructure.Persistence.Configurations
             // =========================
 
             builder.Property(x => x.Bio).HasMaxLength(2000);
+            builder.Property(x => x.PartnerTermsVersion).HasMaxLength(50);
 
             builder.Property(x => x.ExperienceYears).HasDefaultValue(0);
 

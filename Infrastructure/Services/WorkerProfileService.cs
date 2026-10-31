@@ -245,6 +245,8 @@ namespace Infrastructure.Services
                     IsBusy = data.WorkerProfile.IsBusy,
                     IsOffboardingRequested = data.WorkerProfile.IsOffboardingRequested,
                     OffboardingRequestedAt = data.WorkerProfile.OffboardingRequestedAt,
+                    PartnerTermsVersion = data.WorkerProfile.PartnerTermsVersion,
+                    PartnerTermsAcceptedAt = data.WorkerProfile.PartnerTermsAcceptedAt,
 
                     Bio = data.WorkerProfile.Bio,
 
@@ -466,6 +468,15 @@ namespace Infrastructure.Services
                     TotalOrders = 0,
                     IsOnline = false,
                 };
+
+                // Lưu bằng chứng KTV đồng ý hợp đồng nền tảng (CEO 31/10).
+                var partnerTermsVersion = dto.PartnerTermsVersion?.Trim();
+                if (!string.IsNullOrEmpty(partnerTermsVersion))
+                {
+                    workerProfile.PartnerTermsVersion =
+                        partnerTermsVersion.Length > 50 ? partnerTermsVersion[..50] : partnerTermsVersion;
+                    workerProfile.PartnerTermsAcceptedAt = DateTime.UtcNow;
+                }
 
                 await _workerProfileRepository.AddAsync(workerProfile, cancellationToken);
                 // Create Worker Schedule

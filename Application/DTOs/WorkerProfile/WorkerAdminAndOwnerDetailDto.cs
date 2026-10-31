@@ -28,6 +28,8 @@ public class WorkerAdminAndOwnerDetailDto
     public bool IsBusy { get; set; }
     public bool IsOffboardingRequested { get; set; }
     public DateTime? OffboardingRequestedAt { get; set; }
+    public string? PartnerTermsVersion { get; set; }
+    public DateTime? PartnerTermsAcceptedAt { get; set; }
 
     public string? Bio { get; set; }
 

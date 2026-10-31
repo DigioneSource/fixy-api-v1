@@ -71,6 +71,16 @@ namespace Domain.Entity
         // Feature
         // =========================
 
+        // =========================
+        // Partner terms (Hợp đồng sử dụng dịch vụ nền tảng — bằng chứng uỷ quyền thu hộ, uỷ nhiệm hoá đơn)
+        // =========================
+
+        /// <summary>Phiên bản hợp đồng KTV đã đồng ý khi đăng ký (VD "2026-10-31.2").</summary>
+        public string? PartnerTermsVersion { get; set; }
+
+        /// <summary>Thời điểm (UTC) KTV đồng ý hợp đồng.</summary>
+        public DateTime? PartnerTermsAcceptedAt { get; set; }
+
         public DateTime? FeaturedUntil { get; set; }
 
         public FeaturedPackage? FeaturedPackage { get; set; }

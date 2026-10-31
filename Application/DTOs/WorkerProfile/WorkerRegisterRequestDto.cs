@@ -13,6 +13,9 @@ namespace Application.DTOs.WorkerProfile
         public int ExperienceYears { get; set; }
         public int MaxDistanceKm { get; set; }
 
+        /// <summary>Phiên bản "Hợp đồng sử dụng dịch vụ nền tảng" KTV đã đồng ý (tuỳ chọn).</summary>
+        public string? PartnerTermsVersion { get; set; }
+
         // Identification
         public string CitizenIdNumber { get; set; } = default!;
 

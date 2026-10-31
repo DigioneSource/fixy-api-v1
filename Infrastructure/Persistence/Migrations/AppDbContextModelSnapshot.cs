@@ -1025,21 +1025,21 @@ namespace Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1f7d8c1-3e21-4a8c-9b11-2d7f4c5e1001"),
-                            CreatedDate = new DateTime(2026, 10, 31, 13, 31, 55, 739, DateTimeKind.Utc).AddTicks(5820),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 39, 2, 484, DateTimeKind.Utc).AddTicks(390),
                             IsActive = true,
                             Name = "ADMIN"
                         },
                         new
                         {
                             Id = new Guid("b2e8c9d2-4f32-4b9d-8c22-3e8f5d6f2002"),
-                            CreatedDate = new DateTime(2026, 10, 31, 13, 31, 55, 739, DateTimeKind.Utc).AddTicks(5830),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 39, 2, 484, DateTimeKind.Utc).AddTicks(400),
                             IsActive = true,
                             Name = "CUSTOMER"
                         },
                         new
                         {
                             Id = new Guid("c3f9d0e3-5a43-4cad-9d33-4f9a6e7f3003"),
-                            CreatedDate = new DateTime(2026, 10, 31, 13, 31, 55, 739, DateTimeKind.Utc).AddTicks(5830),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 39, 2, 484, DateTimeKind.Utc).AddTicks(400),
                             IsActive = true,
                             Name = "WORKER"
                         });
@@ -2421,6 +2421,13 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("OffboardingRequestedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PartnerTermsAcceptedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PartnerTermsVersion")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime?>("ProfileUpdatedAt")
                         .HasColumnType("datetime2");
