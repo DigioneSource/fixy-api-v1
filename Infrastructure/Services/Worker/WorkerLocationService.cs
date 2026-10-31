@@ -145,6 +145,15 @@ namespace Infrastructure.Services.Worker
                 return OperationResult<BookingTrackingDto>.Failure("Booking not found");
             }
 
+            // Vị trí KTV chỉ khách của chính đơn này được xem (an toàn cho KTV, chống IDOR).
+            if (
+                !Guid.TryParse(_currentUserService.UserId, out var requesterId)
+                || booking.CustomerProfile?.UserId != requesterId
+            )
+            {
+                return OperationResult<BookingTrackingDto>.Failure("Booking not found");
+            }
+
             var trackingDto = new BookingTrackingDto
             {
                 BookingId = booking.Id,
