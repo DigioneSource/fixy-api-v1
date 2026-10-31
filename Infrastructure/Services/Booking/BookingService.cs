@@ -568,6 +568,11 @@ namespace Infrastructure.Services.Booking
                 return OperationResult.Failure("Forbidden");
             }
 
+            if (!request.ProposedPrice.HasValue || request.ProposedPrice.Value <= 0)
+            {
+                return OperationResult.Failure("Giá đề xuất phải lớn hơn 0.");
+            }
+
             booking.UpdatedDate = DateTime.UtcNow;
 
             _bookingRepository.Update(booking);
@@ -1215,9 +1220,14 @@ namespace Infrastructure.Services.Booking
                 cancellationToken
             );
 
-            if (workerService == null)
+            if (workerService == null || !workerService.IsActive)
             {
                 return OperationResult<BookingDetailDto>.Failure("Kỹ thuật viên này hiện không còn cung cấp dịch vụ thuộc danh mục này");
+            }
+
+            if (workerService.BasePrice <= 0)
+            {
+                return OperationResult<BookingDetailDto>.Failure("Gói dịch vụ này chưa có giá niêm yết, không thể đặt.");
             }
 
             await _unitOfWork.BeginTransactionAsync(cancellationToken);

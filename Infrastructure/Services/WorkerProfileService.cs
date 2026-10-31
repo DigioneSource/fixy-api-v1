@@ -295,11 +295,37 @@ namespace Infrastructure.Services
             );
         }
 
+        private const string MissingServicePriceMessage =
+            "Vui lòng nhập giá (lớn hơn 0) cho dịch vụ. Gói chưa có giá sẽ không được lưu.";
+
+        /// <summary>Chỉ giữ các gói thời lượng có giá &gt; 0.</summary>
+        private static List<CreateWorkerServiceOptionDto>? KeepPricedOptions(
+            List<CreateWorkerServiceOptionDto>? options
+        ) => options?.Where(x => x.Price > 0).ToList();
+
+        /// <summary>Dịch vụ có giá niêm yết khi giá gốc &gt; 0 hoặc còn ít nhất một gói có giá.</summary>
+        private static bool HasListedPrice(long basePrice, List<CreateWorkerServiceOptionDto>? options) =>
+            basePrice > 0 || (options != null && options.Count > 0);
+
         public async Task<OperationResult> WorkerRegisterAsync(
             WorkerRegisterRequestDto dto,
             CancellationToken cancellationToken
         )
         {
+            // CEO 31/10 (mô hình trung gian): KTV tự niêm yết giá. Gói giá ≤ 0 bị bỏ qua, giống phía app.
+            var submittedServiceCount = dto.WorkerService.Count;
+            foreach (var service in dto.WorkerService)
+            {
+                service.Options = KeepPricedOptions(service.Options);
+            }
+            dto.WorkerService = dto.WorkerService
+                .Where(x => HasListedPrice(x.BasePrice, x.Options))
+                .ToList();
+            if (submittedServiceCount > 0 && dto.WorkerService.Count == 0)
+            {
+                return OperationResult.Failure(MissingServicePriceMessage);
+            }
+
             if (dto.WorkerService.Count is < 1 or > 10)
             {
                 return OperationResult.Failure(
@@ -722,6 +748,19 @@ namespace Infrastructure.Services
             // Only validate & replace Services if Services are explicitly supplied in DTO
             if (dto.Services != null && dto.Services.Count > 0)
             {
+                // CEO 31/10: bỏ qua gói giá ≤ 0; không xoá hết dịch vụ cũ nếu không còn gói nào có giá.
+                foreach (var service in dto.Services)
+                {
+                    service.Options = KeepPricedOptions(service.Options);
+                }
+                dto.Services = dto.Services
+                    .Where(x => HasListedPrice(x.BasePrice, x.Options))
+                    .ToList();
+                if (dto.Services.Count == 0)
+                {
+                    return OperationResult.Failure(MissingServicePriceMessage);
+                }
+
                 if (dto.Services.Count is < 1 or > 10)
                 {
                     return OperationResult.Failure(

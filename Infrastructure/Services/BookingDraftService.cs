@@ -103,6 +103,12 @@ namespace Infrastructure.Services
                 );
             }
 
+            // CEO 31/10 (mô hình trung gian): khách phải chọn KTV cụ thể, không ghép tự động.
+            if (request.AutoMatch || !request.WorkerProfileId.HasValue)
+            {
+                return OperationResult<BookingDraftCreatedDto>.Failure(SelectWorkerMessage);
+            }
+
             var now = _dateTimeProvider.UtcNow;
 
             var ttlHours = _draftSettings.TtlHours > 0 ? _draftSettings.TtlHours : 24;
@@ -246,6 +252,11 @@ namespace Infrastructure.Services
                 return OperationResult.Failure("User ID not found in token");
             }
 
+            if (request.AutoMatch || !request.WorkerProfileId.HasValue)
+            {
+                return OperationResult.Failure(SelectWorkerMessage);
+            }
+
             var existingDraft = await GetDraftAsync(userId, draftId, cancellationToken);
 
             if (existingDraft == null)
@@ -337,6 +348,11 @@ namespace Infrastructure.Services
             if (draft == null)
             {
                 return OperationResult<BookingDraftConfirmedDto>.Failure("Booking draft not found");
+            }
+
+            if (draft.AutoMatch || !draft.WorkerProfileId.HasValue)
+            {
+                return OperationResult<BookingDraftConfirmedDto>.Failure(SelectWorkerMessage);
             }
 
             // =========================
@@ -456,6 +472,8 @@ namespace Infrastructure.Services
             // ESTIMATED PRICE
             // =========================
 
+            // CEO 31/10 (mô hình trung gian): giá đơn = giá KTV niêm yết cho gói đã chọn.
+            // Không dùng giá sàn của danh mục, không cho đặt gói chưa có giá.
             long? estimatedPrice = null;
 
             if (workerProfileId.HasValue)
@@ -466,33 +484,21 @@ namespace Infrastructure.Services
                     cancellationToken
                 );
 
-                if (workerService != null)
+                if (workerService == null || !workerService.IsActive)
                 {
-                    if (draft.TotalDurationMinutes.HasValue && workerService.Options != null)
-                    {
-                        var matchingOption = workerService.Options
-                            .FirstOrDefault(x => x.IsActive && x.DurationMinutes == draft.TotalDurationMinutes.Value);
-                        if (matchingOption != null)
-                        {
-                            estimatedPrice = matchingOption.Price;
-                        }
-                    }
-
-                    if (!estimatedPrice.HasValue)
-                    {
-                        estimatedPrice = workerService.BasePrice;
-                    }
+                    return OperationResult<BookingDraftConfirmedDto>.Failure(
+                        "Kỹ thuật viên chưa niêm yết giá cho dịch vụ này."
+                    );
                 }
+
+                estimatedPrice = ResolveListedPrice(workerService, draft.TotalDurationMinutes);
             }
 
-            if (!estimatedPrice.HasValue)
+            if (!estimatedPrice.HasValue || estimatedPrice.Value <= 0)
             {
-                var (minPrice, _) = await _workerServiceRepository.GetPriceRangeAsync(
-                    draft.CategoryId,
-                    cancellationToken
+                return OperationResult<BookingDraftConfirmedDto>.Failure(
+                    "Gói dịch vụ này chưa có giá niêm yết, không thể đặt."
                 );
-
-                estimatedPrice = minPrice;
             }
 
             // =========================
@@ -564,6 +570,28 @@ namespace Infrastructure.Services
                 new BookingDraftConfirmedDto { BookingId = booking.Id },
                 "Booking draft confirmed successfully"
             );
+        }
+
+        private const string SelectWorkerMessage = "Vui lòng chọn KTV cụ thể";
+
+        /// <summary>
+        /// Giá KTV niêm yết: gói đúng thời lượng (đang bật, giá &gt; 0) nếu có, ngược lại giá gốc.
+        /// Trả null nếu không có giá &gt; 0.
+        /// </summary>
+        internal static long? ResolveListedPrice(WorkerService workerService, int? durationMinutes)
+        {
+            if (durationMinutes.HasValue && workerService.Options != null)
+            {
+                var option = workerService.Options.FirstOrDefault(x =>
+                    x.IsActive && x.DurationMinutes == durationMinutes.Value
+                );
+                if (option != null)
+                {
+                    return option.Price > 0 ? option.Price : null;
+                }
+            }
+
+            return workerService.BasePrice > 0 ? workerService.BasePrice : null;
         }
 
         private static string BuildDraftKey(Guid userId, Guid draftId)
