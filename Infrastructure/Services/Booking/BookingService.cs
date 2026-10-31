@@ -175,6 +175,18 @@ namespace Infrastructure.Services.Booking
                 return OperationResult<BookingDetailDto>.Failure("Booking not found");
             }
 
+            // Chỉ khách của đơn, KTV của đơn hoặc ADMIN được xem chi tiết (chống IDOR).
+            var isParticipant =
+                Guid.TryParse(_currentUserService.UserId, out var requesterId)
+                && (
+                    booking.CustomerProfile?.UserId == requesterId
+                    || booking.WorkerProfile?.UserId == requesterId
+                );
+            if (!IsAdmin && !isParticipant)
+            {
+                return OperationResult<BookingDetailDto>.Failure("Booking not found");
+            }
+
             var dto = _mapper.Map<BookingDetailDto>(booking);
             ApplyContactPrivacy(dto);
             var isBookingWorker =
