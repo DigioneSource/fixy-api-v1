@@ -256,6 +256,8 @@ namespace Infrastructure.Services.Payment
 
             bool paymentSuccess = false;
 
+            long? paidAmount = null;
+
             switch (method)
             {
                 case PaymentMethod.Vnpay:
@@ -267,6 +269,17 @@ namespace Infrastructure.Services.Payment
                     transactionId = response["vnp_TransactionNo"];
 
                     paymentSuccess = response["vnp_ResponseCode"] == "00";
+
+                    // vnp_Amount = số tiền x 100
+                    if (
+                        response.TryGetValue("vnp_Amount", out var vnpAmount)
+                        && long.TryParse(vnpAmount, out var vnpAmountValue)
+                    )
+                    {
+                        paidAmount = vnpAmountValue / 100;
+                        if (vnpAmountValue % 100 != 0)
+                            paidAmount = -1; // không hợp lệ -> chắc chắn lệch
+                    }
 
                     break;
                 }
@@ -280,6 +293,14 @@ namespace Infrastructure.Services.Payment
                     transactionId = response["transId"];
 
                     paymentSuccess = response["resultCode"] == "0";
+
+                    if (
+                        response.TryGetValue("amount", out var momoAmount)
+                        && long.TryParse(momoAmount, out var momoAmountValue)
+                    )
+                    {
+                        paidAmount = momoAmountValue;
+                    }
 
                     break;
                 }
@@ -308,6 +329,23 @@ namespace Infrastructure.Services.Payment
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
 
                 return OperationResult<bool>.Failure("Payment failed");
+            }
+
+            if (paidAmount != order.FinalAmount)
+            {
+                _logger.LogWarning(
+                    "Payment amount mismatch ({Method}) for order {OrderId}: gateway={PaidAmount}, expected={Expected}. Payment NOT recorded.",
+                    method,
+                    order.Id,
+                    paidAmount,
+                    order.FinalAmount
+                );
+
+                order.GatewayResponse = JsonSerializer.Serialize(response);
+                _paymentOrderRepository.Update(order);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                return OperationResult<bool>.Failure("Số tiền thanh toán không khớp với đơn hàng");
             }
 
             order.Status = PaymentStatus.Paid;
@@ -407,21 +445,17 @@ namespace Infrastructure.Services.Payment
                 // 1. Verify Webhook Signature using PayOS SDK (chống giả mạo request)
                 try
                 {
-                    var payosService = _paymentGatewayFactory.Get(PaymentMethod.PayOS) as PayOSService;
-                    if (payosService != null)
-                    {
-                        var jsonString = JsonSerializer.Serialize(callback);
-                        var webhookBody = JsonSerializer.Deserialize<WebhookType>(jsonString, new JsonSerializerOptions
-                        {
-                            PropertyNameCaseInsensitive = true
-                        });
+                    var payosService = _paymentGatewayFactory.Get(PaymentMethod.PayOS) as PayOSService
+                        ?? throw new InvalidOperationException("PayOS gateway is not configured");
 
-                        if (webhookBody != null)
-                        {
-                            payosService.VerifyWebhookData(webhookBody);
-                            _logger.LogInformation("PayOS webhook signature verified for OrderCode: {OrderCode}", data.OrderCode);
-                        }
-                    }
+                    var jsonString = JsonSerializer.Serialize(callback);
+                    var webhookBody = JsonSerializer.Deserialize<WebhookType>(jsonString, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    }) ?? throw new InvalidOperationException("PayOS webhook body is empty");
+
+                    payosService.VerifyWebhookData(webhookBody);
+                    _logger.LogInformation("PayOS webhook signature verified for OrderCode: {OrderCode}", data.OrderCode);
                 }
                 catch (Exception ex)
                 {
@@ -471,7 +505,24 @@ namespace Infrastructure.Services.Payment
                     return OperationResult<bool>.Success(false, "Payment failed status recorded");
                 }
 
-            // 4. Mark as Paid
+            // 4. Đối chiếu số tiền với đơn hàng
+            if (data.Amount != order.FinalAmount)
+            {
+                _logger.LogWarning(
+                    "PayOS amount mismatch for order {OrderId} (OrderCode {OrderCode}): gateway={PaidAmount}, expected={Expected}. Payment NOT recorded.",
+                    order.Id,
+                    data.OrderCode,
+                    data.Amount,
+                    order.FinalAmount
+                );
+
+                _paymentOrderRepository.Update(order);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                return OperationResult<bool>.Failure("Số tiền thanh toán không khớp với đơn hàng");
+            }
+
+            // 5. Mark as Paid
             order.Status = PaymentStatus.Paid;
             order.PaidAt = DateTime.UtcNow;
             order.ExternalTransactionId = data.OrderCode.ToString();
