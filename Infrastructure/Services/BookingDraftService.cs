@@ -324,10 +324,11 @@ namespace Infrastructure.Services
             // E-CONTRACT TERMS VALIDATION
             // =========================
 
-            if (!request.AcceptedTerms)
+            // Thiếu field hoặc khác true đều bị từ chối
+            if (request == null || !request.AcceptedTerms)
             {
                 return OperationResult<BookingDraftConfirmedDto>.Failure(
-                    "Quý khách cần đồng ý với Hợp đồng dịch vụ điện tử và Điều khoản sử dụng trước khi tiếp tục."
+                    "Vui lòng đồng ý điều khoản trước khi đặt lịch"
                 );
             }
 

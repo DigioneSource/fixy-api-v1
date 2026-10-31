@@ -5,6 +5,7 @@ namespace Application.DTOs.BookingDraft
         /// <summary>
         /// Khách hàng xác nhận đồng ý với Hợp đồng dịch vụ điện tử và điều khoản sử dụng
         /// </summary>
-        public bool AcceptedTerms { get; set; } = true;
+        // Mặc định false: client bắt buộc gửi acceptedTerms = true.
+        public bool AcceptedTerms { get; set; } = false;
     }
 }
