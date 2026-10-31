@@ -25,3 +25,10 @@ API/.env
 # Chặn các file cấu hình publish của Visual Studio
 **/PublishProfiles/
 **/ServiceDependencies/
+
+# Tự host (Docker): bí mật và dữ liệu trên VPS
+.env
+.env.*
+!.env.example
+backups/
+secrets/

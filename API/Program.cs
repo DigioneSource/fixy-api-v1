@@ -103,6 +103,8 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 // SignalR
 builder.Services.AddSignalR();
+// Health check cho Docker / giám sát (GET /health)
+builder.Services.AddHealthChecks();
 
 builder.Services.AddCors(options =>
 {
@@ -112,8 +114,10 @@ builder.Services.AddCors(options =>
         {
             policy
                 .WithOrigins(
-                    "http://localhost:3000",
-                    "https://fixy-fe-v1.vercel.app"
+                    new[] { "http://localhost:3000", "https://fixy-fe-v1.vercel.app" }
+                        // Thêm domain web khi tự host: Cors__AllowedOrigins__0=https://admin.tayzen.vn
+                        .Concat(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
+                        .ToArray()
                 )
                 .AllowAnyHeader()
                 .AllowAnyMethod()
@@ -142,6 +146,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 // Map SignalR Hubs
 app.MapHub<BookingHub>("/hubs/booking");

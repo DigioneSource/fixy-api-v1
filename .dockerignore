@@ -1,0 +1,28 @@
+# Không đưa vào image: mã build, git, bí mật, log, tài liệu
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+**/logs/
+.git/
+.github/
+.claude/
+docs/
+deploy/
+backups/
+secrets/
+
+# TUYỆT ĐỐI không đưa file bí mật vào image
+**/.env
+**/.env.*
+!.env.example
+**/*.pfx
+**/*firebase*.json
+**/appsettings.*.json
+
+docker-compose*.yml
+Dockerfile
+.dockerignore
+README.md

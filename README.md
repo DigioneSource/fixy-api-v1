@@ -435,6 +435,17 @@ dotnet run --project API
 
 Truy cập Swagger: `https://localhost:7059/swagger`
 
+## 🐳 Triển Khai Tự Host (Docker)
+
+Ngoài Azure App Service (workflow `.github/workflows/deploy.yml`, nhánh `master`), API có thể tự host trên một VPS Ubuntu bằng Docker:
+
+- `Dockerfile`: build nhiều tầng, chạy bằng user không phải root ở cổng 8080, kiểm tra sức khoẻ tại `GET /health`.
+- `docker-compose.yml`: gồm `api`, SQL Server 2022 Express, Redis, Cloudflare Tunnel, cùng service `migrate` để chạy migration.
+- `.env.example`: danh sách đầy đủ các biến cấu hình.
+- `deploy/`: hướng dẫn từng bước ([deploy/README.md](deploy/README.md)) và các script migrate, đặt mật khẩu admin, sao lưu.
+
+Lưu ảnh: đặt `Storage__Provider=Local` để lưu ảnh trên VPS (ảnh CCCD và ảnh khuôn mặt chỉ trả cho chính chủ hoặc ADMIN), hoặc `AzureBlob` để giữ cách cũ.
+
 ## 📦 Packages Đã Cài Đặt
 
 - **Domain**: Không có dependencies

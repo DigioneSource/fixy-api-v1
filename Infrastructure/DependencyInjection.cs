@@ -95,6 +95,7 @@ namespace Infrastructure
             // Blob Settings
             services.Configure<BlobSettings>(configuration.GetSection("BlobSettings"));
             services.Configure<SmsSettings>(configuration.GetSection("SmsSettings"));
+            services.Configure<StorageSettings>(configuration.GetSection("Storage"));
 
             services.AddSingleton<IEmailQueue, EmailQueue>();
             services.AddHostedService<EmailBackgroundService>();
@@ -133,7 +134,7 @@ namespace Infrastructure
                         {
                             var accessToken = context.Request.Query["access_token"];
                             var path = context.HttpContext.Request.Path;
-                            if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                            if (!string.IsNullOrEmpty(accessToken) && (path.StartsWithSegments("/hubs") || path.StartsWithSegments("/media")))
                             {
                                 context.Token = accessToken;
                             }
@@ -204,7 +205,17 @@ namespace Infrastructure
             services.AddScoped<IServiceCategoryService, ServiceCategoryService>();
             services.AddScoped<IWalletService, WalletService>();
             services.AddScoped<IMediaService, MediaService>();
-            services.AddScoped<IBlobService, BlobService>();
+            // Nơi lưu ảnh: Storage:Provider = AzureBlob (mặc định) | Local
+            var storageProvider = configuration.GetSection("Storage").Get<StorageSettings>()?.Provider
+                ?? StorageSettings.ProviderAzureBlob;
+            if (string.Equals(storageProvider, StorageSettings.ProviderLocal, StringComparison.OrdinalIgnoreCase))
+                services.AddScoped<IBlobService, LocalBlobService>();
+            else if (string.Equals(storageProvider, StorageSettings.ProviderAzureBlob, StringComparison.OrdinalIgnoreCase))
+                services.AddScoped<IBlobService, BlobService>();
+            else
+                throw new InvalidOperationException(
+                    $"Storage:Provider '{storageProvider}' chưa được hỗ trợ (chỉ có AzureBlob hoặc Local)."
+                );
             services.AddScoped<IEnumService, EnumService>();
             services.AddScoped<IBookingHubService, BookingHubService>();
             services.AddScoped<IBookingService, BookingService>();

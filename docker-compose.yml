@@ -1,0 +1,199 @@
+# =============================================================================
+# TAYZEN API — chạy production trên 1 VPS Ubuntu
+#   docker compose up -d --build          # dựng + chạy api, db, redis, cloudflared
+#   ./deploy/migrate.sh                   # tạo CSDL, login ứng dụng, chạy migration
+# Mọi bí mật lấy từ file .env (chép từ .env.example). KHÔNG commit .env.
+# Không service nào mở cổng ra Internet: truy cập từ ngoài chỉ qua Cloudflare Tunnel.
+# =============================================================================
+name: tayzen
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  # ---------------------------------------------------------------- SQL Server
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Thiếu MSSQL_SA_PASSWORD trong .env}
+      MSSQL_MEMORY_LIMIT_MB: ${MSSQL_MEMORY_LIMIT_MB:-1536}
+      MSSQL_BACKUP_DIR: /var/opt/mssql/backup
+      DB_NAME: ${DB_NAME:-TAYZEN}
+    volumes:
+      - mssql-data:/var/opt/mssql
+      # Bản sao lưu .bak ra thư mục trên máy chủ (deploy/backup.sh)
+      - ./backups/mssql:/var/opt/mssql/backup
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -Q 'SELECT 1' -b -o /dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    logging: *default-logging
+
+  # --------------------------------------------------------------------- Redis
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Thiếu REDIS_PASSWORD trong .env}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  # ----------------------------------------------------------------------- API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: tayzen-api:${TAYZEN_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # Tin X-Forwarded-For/Proto do cloudflared gửi (API không mở cổng nào khác)
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+
+      # --- CSDL & Redis (ghép từ mật khẩu trong .env, không cần điền tay)
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=${DB_NAME:-TAYZEN};User Id=${DB_APP_USER:-tayzen_app};Password=${DB_APP_PASSWORD:?Thiếu DB_APP_PASSWORD trong .env};Encrypt=True;TrustServerCertificate=True;MultipleActiveResultSets=False"
+      RedisSettings__ConnectionString: "redis:6379,password=${REDIS_PASSWORD},abortConnect=false"
+      RedisSettings__InstanceName: ${RedisSettings__InstanceName:-tayzen:}
+
+      # --- JWT (bắt buộc)
+      JwtSettings__Secret: ${JwtSettings__Secret:?Thiếu JwtSettings__Secret trong .env}
+      JwtSettings__Issuer: ${JwtSettings__Issuer:?Thiếu JwtSettings__Issuer}
+      JwtSettings__Audience: ${JwtSettings__Audience:?Thiếu JwtSettings__Audience}
+      JwtSettings__AccessTokenExpirationMinutes: ${JwtSettings__AccessTokenExpirationMinutes:-60}
+      JwtSettings__RefreshTokenExpirationDays: ${JwtSettings__RefreshTokenExpirationDays:-30}
+
+      # --- Lưu ảnh
+      Storage__Provider: ${Storage__Provider:-Local}
+      Storage__Local__PublicBaseUrl: ${Storage__Local__PublicBaseUrl:-}
+      BlobSettings__ConnectionString: ${BlobSettings__ConnectionString:-}
+      BlobSettings__ContainerName: ${BlobSettings__ContainerName:-}
+      CloudinarySettings__CloudName: ${CloudinarySettings__CloudName:-}
+      CloudinarySettings__ApiKey: ${CloudinarySettings__ApiKey:-}
+      CloudinarySettings__ApiSecret: ${CloudinarySettings__ApiSecret:-}
+
+      # --- Đăng nhập mạng xã hội
+      GoogleSettings__WebClientId: ${GoogleSettings__WebClientId:-}
+      GoogleSettings__IosClientId: ${GoogleSettings__IosClientId:-}
+      FacebookSettings__AppId: ${FacebookSettings__AppId:-}
+      FacebookSettings__AppSecret: ${FacebookSettings__AppSecret:-}
+
+      # --- Thanh toán
+      MoMoSettings__PartnerCode: ${MoMoSettings__PartnerCode:-}
+      MoMoSettings__AccessKey: ${MoMoSettings__AccessKey:-}
+      MoMoSettings__SecretKey: ${MoMoSettings__SecretKey:-}
+      MoMoSettings__BaseUrl: ${MoMoSettings__BaseUrl:-}
+      MoMoSettings__ReturnUrl: ${MoMoSettings__ReturnUrl:-}
+      MoMoSettings__NotifyUrl: ${MoMoSettings__NotifyUrl:-}
+      VnPaySettings__TmnCode: ${VnPaySettings__TmnCode:-}
+      VnPaySettings__HashSecret: ${VnPaySettings__HashSecret:-}
+      VnPaySettings__BaseUrl: ${VnPaySettings__BaseUrl:-}
+      VnPaySettings__ReturnUrl: ${VnPaySettings__ReturnUrl:-}
+      PayOSSetings__ClientId: ${PayOSSetings__ClientId:-}
+      PayOSSetings__ApiKey: ${PayOSSetings__ApiKey:-}
+      PayOSSetings__ChecksumKey: ${PayOSSetings__ChecksumKey:-}
+      PayOSSetings__ReturnUrl: ${PayOSSetings__ReturnUrl:-}
+      PayOSSetings__CancelUrl: ${PayOSSetings__CancelUrl:-}
+      SePay__WebhookToken: ${SePay__WebhookToken:-}
+
+      # --- Email OTP (SMTP)
+      SmtpSettings__Host: ${SmtpSettings__Host:-}
+      SmtpSettings__Port: ${SmtpSettings__Port:-587}
+      SmtpSettings__EnableSsl: ${SmtpSettings__EnableSsl:-true}
+      SmtpSettings__Username: ${SmtpSettings__Username:-}
+      SmtpSettings__Password: ${SmtpSettings__Password:-}
+      SmtpSettings__From: ${SmtpSettings__From:-}
+
+      # --- SMS OTP
+      SmsSettings__UseMock: ${SmsSettings__UseMock:-true}
+      SmsSettings__Provider: ${SmsSettings__Provider:-Mock}
+      SmsSettings__ApiKey: ${SmsSettings__ApiKey:-}
+      SmsSettings__ApiSecret: ${SmsSettings__ApiSecret:-}
+      SmsSettings__SenderId: ${SmsSettings__SenderId:-FIXY}
+      SmsSettings__BaseUrl: ${SmsSettings__BaseUrl:-}
+      SmsSettings__TimeoutSeconds: ${SmsSettings__TimeoutSeconds:-10}
+
+      # --- Khác
+      WorkerMatchingSettings__OfferTimeoutMinutes: ${WorkerMatchingSettings__OfferTimeoutMinutes:-15}
+      GOONG_API_KEY: ${GOONG_API_KEY:-}
+      Firebase__CredentialJsonPath: ${Firebase__CredentialJsonPath:-}
+      Cors__AllowedOrigins__0: ${Cors__AllowedOrigins__0:-}
+      Cors__AllowedOrigins__1: ${Cors__AllowedOrigins__1:-}
+    volumes:
+      - api-uploads:/app/data/uploads
+      - api-logs:/app/logs
+      # File bí mật dạng file (vd. Firebase service account) đặt ở ./secrets trên máy chủ
+      - ./secrets:/run/secrets/tayzen:ro
+    networks: [backend, edge]
+    # Mở dòng dưới nếu cần gọi thử API ngay trên VPS (chỉ nghe localhost, không lộ ra ngoài):
+    # ports: ["127.0.0.1:8080:8080"]
+    logging: *default-logging
+
+  # ------------------------------------------------- Migration (chạy khi cần)
+  migrate:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: migrator
+    image: tayzen-migrator:${TAYZEN_TAG:-latest}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Migration cần quyền DDL nên dùng sa; API chạy bằng login hạn chế DB_APP_USER
+      ConnectionStrings__DefaultConnection: "Server=db,1433;Database=${DB_NAME:-TAYZEN};User Id=sa;Password=${MSSQL_SA_PASSWORD};Encrypt=True;TrustServerCertificate=True"
+    networks: [backend]
+    logging: *default-logging
+
+  # ------------------------------------------------------- Cloudflare Tunnel
+  cloudflared:
+    image: cloudflare/cloudflared:${CLOUDFLARED_TAG:-latest}
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?Thiếu CLOUDFLARE_TUNNEL_TOKEN trong .env}
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [edge]
+    logging: *default-logging
+
+networks:
+  # Mạng nội bộ: db/redis không có đường ra Internet, không publish cổng
+  backend:
+    internal: true
+  # Mạng có Internet: api gọi cổng thanh toán, SMTP, Goong...; cloudflared nối ra Cloudflare
+  edge: {}
+
+volumes:
+  mssql-data:
+  redis-data:
+  api-uploads:
+  api-logs:
