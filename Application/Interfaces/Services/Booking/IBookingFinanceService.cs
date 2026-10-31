@@ -35,6 +35,20 @@ namespace Application.Interfaces.Services.Booking
             CancellationToken cancellationToken = default
         );
 
+        /// <summary>
+        /// Tiền khi huỷ đơn (gọi trước khi lưu, booking cần nạp CustomerProfile/WorkerProfile/PaymentOrder):
+        /// - Khách huỷ ở Traveling/Arrived (<paramref name="chargeCustomerFee"/> = true): phí huỷ 30% giá dịch vụ;
+        ///   đơn trả trước thì hoàn phần còn lại vào ví khách, KTV nhận 70% phí (CancellationCompensation),
+        ///   nền tảng giữ 30%; đơn tiền mặt chỉ ghi Booking.CancellationFee là số phải thu.
+        /// - Còn lại: miễn phí, đơn trả trước hoàn đủ vào ví khách.
+        /// </summary>
+        Task<OperationResult<CancellationFeeBreakdown>> ApplyCancellationAsync(
+            BookingEntity booking,
+            Domain.Enum.BookingStatus statusBeforeCancel,
+            bool chargeCustomerFee,
+            CancellationToken cancellationToken = default
+        );
+
         /// <summary>Đơn bị huỷ: hoàn khoản tạm giữ phí nền tảng (nếu có) về ví KTV.</summary>
         Task ReleaseCashPlatformFeeAsync(
             BookingEntity booking,

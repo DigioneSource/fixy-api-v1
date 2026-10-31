@@ -179,6 +179,100 @@ public class BookingFinanceServiceTests
         Assert.Equal(165_000, tx.PlatformFee);
     }
 
+    private static async Task<Wallet> SeedCustomerWalletAsync(AppDbContext ctx, Guid userId)
+    {
+        var wallet = new Wallet
+        {
+            UserId = userId,
+            OwnerType = WalletOwnerType.Customer,
+            RowVersion = new byte[8],
+            CreatedAt = DateTime.UtcNow,
+        };
+        ctx.Wallets.Add(wallet);
+        await ctx.SaveChangesAsync();
+        return wallet;
+    }
+
+    [Fact]
+    public async Task KhachHuyKhiKtvDangDi_DonTraTruoc_Thu30PhanTramChiaKtv70()
+    {
+        await using var ctx = NewContext();
+        var customerUserId = Guid.NewGuid();
+        var workerWallet = await SeedWalletAsync(ctx, 0);
+        var customerWallet = await SeedCustomerWalletAsync(ctx, customerUserId);
+        var booking = NewBooking(500_000, PaymentMethod.PayOS, PaymentStatus.Paid);
+        booking.CustomerProfile = new CustomerProfile { UserId = customerUserId };
+
+        var result = await NewService(ctx)
+            .ApplyCancellationAsync(booking, BookingStatus.Traveling, chargeCustomerFee: true);
+        await ctx.SaveChangesAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(150_000, booking.CancellationFee);
+        Assert.Equal(350_000, customerWallet.Balance);
+        Assert.Equal(105_000, workerWallet.Balance);
+        Assert.Equal(PaymentStatus.Refunded, booking.PaymentOrder!.Status);
+        Assert.Contains(
+            ctx.WalletTransactions,
+            x => x.Type == WalletTransactionType.CancellationCompensation && x.PlatformFee == 45_000
+        );
+    }
+
+    [Fact]
+    public async Task KhachHuyTruocKhiKtvXuatPhat_DonTraTruoc_HoanDu()
+    {
+        await using var ctx = NewContext();
+        var customerUserId = Guid.NewGuid();
+        var workerWallet = await SeedWalletAsync(ctx, 0);
+        var customerWallet = await SeedCustomerWalletAsync(ctx, customerUserId);
+        var booking = NewBooking(500_000, PaymentMethod.Wallet, PaymentStatus.Paid);
+        booking.CustomerProfile = new CustomerProfile { UserId = customerUserId };
+
+        var result = await NewService(ctx)
+            .ApplyCancellationAsync(booking, BookingStatus.Confirmed, chargeCustomerFee: true);
+        await ctx.SaveChangesAsync();
+
+        Assert.Equal(0, result.Data.CancellationFee);
+        Assert.Null(booking.CancellationFee);
+        Assert.Equal(500_000, customerWallet.Balance);
+        Assert.Equal(0, workerWallet.Balance);
+    }
+
+    [Fact]
+    public async Task KtvHuy_KhongTinhPhiHuyChoKhach()
+    {
+        await using var ctx = NewContext();
+        var customerUserId = Guid.NewGuid();
+        await SeedWalletAsync(ctx, 0);
+        var customerWallet = await SeedCustomerWalletAsync(ctx, customerUserId);
+        var booking = NewBooking(500_000, PaymentMethod.Vnpay, PaymentStatus.Paid);
+        booking.CustomerProfile = new CustomerProfile { UserId = customerUserId };
+
+        await NewService(ctx)
+            .ApplyCancellationAsync(booking, BookingStatus.Arrived, chargeCustomerFee: false);
+        await ctx.SaveChangesAsync();
+
+        Assert.Null(booking.CancellationFee);
+        Assert.Equal(500_000, customerWallet.Balance);
+    }
+
+    [Fact]
+    public async Task KhachHuyKhiKtvDaDen_DonTienMat_ChiGhiPhiPhaiThu_KhongTruViKtv()
+    {
+        await using var ctx = NewContext();
+        var workerWallet = await SeedWalletAsync(ctx, 300_000);
+        var booking = NewBooking(500_000, PaymentMethod.Cash, PaymentStatus.Pending);
+
+        var result = await NewService(ctx)
+            .ApplyCancellationAsync(booking, BookingStatus.Arrived, chargeCustomerFee: true);
+        await ctx.SaveChangesAsync();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(150_000, booking.CancellationFee);
+        Assert.Equal(300_000, workerWallet.Balance);
+        Assert.Empty(ctx.WalletTransactions);
+    }
+
     [Fact]
     public async Task HoanThanhDonTraTruocCoVoucher_PhiTinhTrenGiaGoc_KtvKhongChiuVoucher()
     {

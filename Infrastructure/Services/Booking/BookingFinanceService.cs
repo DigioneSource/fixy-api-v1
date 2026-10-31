@@ -251,6 +251,101 @@ namespace Infrastructure.Services.Booking
             return OperationResult.Success("Đã tạm giữ phí nền tảng");
         }
 
+        public async Task<OperationResult<CancellationFeeBreakdown>> ApplyCancellationAsync(
+            BookingEntity booking,
+            BookingStatus statusBeforeCancel,
+            bool chargeCustomerFee,
+            CancellationToken cancellationToken = default
+        )
+        {
+            var order = booking.PaymentOrder;
+            var prepaid =
+                order != null
+                && order.Status == PaymentStatus.Paid
+                && order.Method != PaymentMethod.Cash;
+            var paidAmount = prepaid ? order!.FinalAmount : 0;
+
+            var servicePrice = await GetServicePriceBeforeVoucherAsync(booking, cancellationToken);
+            var breakdown = PlatformFeeCalculator.CalculateCancellation(
+                chargeCustomerFee ? statusBeforeCancel : BookingStatus.Pending,
+                servicePrice,
+                paidAmount,
+                _settings
+            );
+
+            booking.CancellationFee = breakdown.CancellationFee > 0 ? breakdown.CancellationFee : null;
+
+            if (!prepaid)
+            {
+                // Đơn tiền mặt / chưa trả: chưa cầm tiền khách nên chỉ ghi phí phải thu, không đụng ví KTV.
+                return OperationResult<CancellationFeeBreakdown>.Success(breakdown);
+            }
+
+            if (breakdown.RefundAmount > 0)
+            {
+                var customerUserId = booking.CustomerProfile?.UserId;
+                var customerWallet = customerUserId.HasValue
+                    ? await _walletRepository.GetByUserIdAsync(
+                        customerUserId.Value,
+                        WalletOwnerType.Customer,
+                        cancellationToken
+                    )
+                    : null;
+                if (customerWallet == null)
+                {
+                    return OperationResult<CancellationFeeBreakdown>.Failure(
+                        "Lỗi hoàn tiền về ví khách hàng: Wallet not found"
+                    );
+                }
+
+                var reference = booking.Id.ToString();
+                var alreadyRefunded = await _walletTransactionRepository.ExistsAsync(
+                    x => x.ReferenceId == reference && x.Type == WalletTransactionType.Refund,
+                    cancellationToken
+                );
+                if (!alreadyRefunded)
+                {
+                    await CreditAsync(
+                        customerWallet,
+                        breakdown.RefundAmount,
+                        WalletTransactionType.Refund,
+                        booking,
+                        cancellationToken
+                    );
+                }
+            }
+
+            if (breakdown.WorkerShare > 0 && booking.WorkerProfile != null)
+            {
+                var workerWallet = await _walletRepository.GetByUserIdAsync(
+                    booking.WorkerProfile.UserId,
+                    WalletOwnerType.Worker,
+                    cancellationToken
+                );
+                if (workerWallet != null)
+                {
+                    await CreditAsync(
+                        workerWallet,
+                        breakdown.WorkerShare,
+                        WalletTransactionType.CancellationCompensation,
+                        booking,
+                        cancellationToken,
+                        platformFee: breakdown.PlatformShare,
+                        countAsEarning: true
+                    );
+                }
+                else
+                {
+                    _logger.LogWarning("Booking {BookingId}: không tìm thấy ví KTV để chia phí huỷ", booking.Id);
+                }
+            }
+
+            order!.Status = PaymentStatus.Refunded;
+            order.RefundedAt = DateTime.UtcNow;
+
+            return OperationResult<CancellationFeeBreakdown>.Success(breakdown);
+        }
+
         public async Task ReleaseCashPlatformFeeAsync(
             BookingEntity booking,
             Guid workerUserId,

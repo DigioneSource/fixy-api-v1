@@ -1038,18 +1038,18 @@ namespace Infrastructure.Services.Booking
             }
         }
 
-        public async Task<OperationResult> CancelAsync(Guid bookingId,CancelBookingRequest request,CancellationToken cancellationToken = default)
+        public async Task<OperationResult<CancelBookingResultDto>> CancelAsync(Guid bookingId,CancelBookingRequest request,CancellationToken cancellationToken = default)
         {
             var currentUserIdStr = _currentUserService.UserId;
             if (string.IsNullOrEmpty(currentUserIdStr) || !Guid.TryParse(currentUserIdStr, out var currentUserId))
             {
-                return OperationResult.Failure("Không tìm thấy thông tin người dùng hiện tại");
+                return OperationResult<CancelBookingResultDto>.Failure("Không tìm thấy thông tin người dùng hiện tại");
             }
 
             var booking = await _bookingRepository.GetBookingWithWorkerAsync(bookingId, cancellationToken);
             if (booking == null)
             {
-                return OperationResult.Failure("Không tìm thấy thông tin lịch hẹn");
+                return OperationResult<CancelBookingResultDto>.Failure("Không tìm thấy thông tin lịch hẹn");
             }
 
             // 1. Kiểm tra Quyền sở hữu (Authorization Check)
@@ -1058,23 +1058,26 @@ namespace Infrastructure.Services.Booking
 
             if (!isCustomer && !isWorker)
             {
-                return OperationResult.Failure("Bạn không có quyền hủy lịch hẹn này");
+                return OperationResult<CancelBookingResultDto>.Failure("Bạn không có quyền hủy lịch hẹn này");
             }
 
             // 2. Kiểm tra Trạng thái hợp lệ theo từng Vai trò (Role-based Status Validation)
             if (isCustomer)
             {
+                // CEO 30/10: khách được huỷ cả khi KTV đang di chuyển / đã đến, nhưng mất phí huỷ 30%.
                 var customerValidStates = new[]
                 {
                     BookingStatus.Matching,
                     BookingStatus.Pending,
                     BookingStatus.PendingPayment,
-                    BookingStatus.Confirmed
+                    BookingStatus.Confirmed,
+                    BookingStatus.Traveling,
+                    BookingStatus.Arrived
                 };
 
                 if (!customerValidStates.Contains(booking.Status))
                 {
-                    return OperationResult.Failure($"Khách hàng không thể hủy lịch hẹn ở trạng thái hiện tại: {booking.Status}");
+                    return OperationResult<CancelBookingResultDto>.Failure($"Khách hàng không thể hủy lịch hẹn ở trạng thái hiện tại: {booking.Status}");
                 }
             }
             else if (isWorker)
@@ -1082,9 +1085,11 @@ namespace Infrastructure.Services.Booking
                 // Worker chỉ được phép hủy lịch hẹn khi ở trạng thái Pending
                 if (booking.Status != BookingStatus.Pending && booking.Status != BookingStatus.Matching)
                 {
-                    return OperationResult.Failure($"Kỹ thuật viên không thể hủy lịch hẹn ở trạng thái hiện tại: {booking.Status}");
+                    return OperationResult<CancelBookingResultDto>.Failure($"Kỹ thuật viên không thể hủy lịch hẹn ở trạng thái hiện tại: {booking.Status}");
                 }
             }
+
+            var statusBeforeCancel = booking.Status;
 
             // 3. Khởi tạo Database Transaction
             await _unitOfWork.BeginTransactionAsync(cancellationToken);
@@ -1107,37 +1112,29 @@ namespace Infrastructure.Services.Booking
                     }
                 }
 
-                _bookingRepository.Update(booking);
-
-                // A. Giải phóng Voucher nếu có áp dụng
-                var voucherService = _serviceProvider.GetRequiredService<Application.Interfaces.Services.Voucher.IVoucherService>();
-                await voucherService.ReleaseVoucherAsync(bookingId, cancellationToken);
-
-                // B. Xử lý Hoàn tiền ví nếu đã thanh toán
-                if (booking.PaymentOrder != null && booking.PaymentOrder.Status == PaymentStatus.Paid)
+                // A. Phí huỷ + hoàn tiền (CEO 30–31/10): tính trên giá trước voucher, nên chạy trước khi giải phóng voucher.
+                //    Khách huỷ ở Traveling/Arrived: thu 30%, KTV nhận 70% phí, nền tảng 30%; đơn trả trước hoàn phần còn lại
+                //    vào ví khách. Đơn tiền mặt chỉ ghi phí phải thu. Trước Traveling: miễn phí, hoàn đủ.
+                var feeResult = await _bookingFinanceService.ApplyCancellationAsync(
+                    booking,
+                    statusBeforeCancel,
+                    chargeCustomerFee: isCustomer,
+                    cancellationToken
+                );
+                if (!feeResult.IsSuccess)
                 {
-                    var walletService = _serviceProvider.GetRequiredService<IWalletService>();
+                    await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                    return OperationResult<CancelBookingResultDto>.Failure(feeResult.Message ?? "Lỗi hoàn tiền");
+                }
+                var fee = feeResult.Data;
 
-                    var refundResult = await walletService.RefundAsync(
-                        booking.CustomerProfile!.UserId,
-                        booking.PaymentOrder.FinalAmount,
-                        bookingId.ToString(),
-                        cancellationToken
-                    );
-
-                    if (!refundResult.IsSuccess)
-                    {
-                        await _unitOfWork.RollbackTransactionAsync(cancellationToken);
-                        return OperationResult.Failure($"Lỗi hoàn tiền về ví khách hàng: {refundResult.Message}");
-                    }
-
-                    booking.PaymentOrder.Status = PaymentStatus.Refunded;
-                    booking.PaymentOrder.RefundedAt = DateTime.UtcNow;
+                if (booking.PaymentOrder != null)
+                {
                     var paymentOrderRepository = _serviceProvider.GetRequiredService<IPaymentOrderRepository>();
                     paymentOrderRepository.Update(booking.PaymentOrder);
                 }
 
-                // B2. Đơn tiền mặt: hoàn khoản tạm giữ phí nền tảng về ví KTV (CEO 31/10)
+                // B. Đơn tiền mặt: hoàn khoản tạm giữ phí nền tảng về ví KTV (CEO 31/10)
                 if (booking.WorkerProfile != null)
                 {
                     await _bookingFinanceService.ReleaseCashPlatformFeeAsync(
@@ -1147,7 +1144,13 @@ namespace Infrastructure.Services.Booking
                     );
                 }
 
-                // C. Làm sạch Hàng đợi Matching (Đánh dấu Skipped cho các Worker khác đang được offer đơn này)
+                _bookingRepository.Update(booking);
+
+                // C. Giải phóng Voucher nếu có áp dụng
+                var voucherService = _serviceProvider.GetRequiredService<Application.Interfaces.Services.Voucher.IVoucherService>();
+                await voucherService.ReleaseVoucherAsync(bookingId, cancellationToken);
+
+                // D. Làm sạch Hàng đợi Matching (Đánh dấu Skipped cho các Worker khác đang được offer đơn này)
                 var queueEntries = await _matchingQueueRepository.FindAsync(
                     x => x.BookingId == bookingId && (x.Status == MatchingStatus.Pending || x.Status == MatchingStatus.Offered),
                     cancellationToken
@@ -1160,6 +1163,17 @@ namespace Infrastructure.Services.Booking
 
                 await _unitOfWork.SaveChangesAsync(cancellationToken);
                 await _unitOfWork.CommitTransactionAsync(cancellationToken);
+
+                var prepaid = booking.PaymentOrder != null && booking.PaymentOrder.Method != PaymentMethod.Cash
+                    && booking.PaymentOrder.Status == PaymentStatus.Refunded;
+                var resultDto = new CancelBookingResultDto
+                {
+                    BookingId = bookingId,
+                    CancellationFee = fee.CancellationFee,
+                    RefundAmount = fee.RefundAmount,
+                    WorkerCompensation = prepaid ? fee.WorkerShare : 0,
+                    CancellationFeeCollected = fee.CancellationFee == 0 || prepaid,
+                };
 
                 // 4. Đồng bộ thời gian thực qua SignalR & Gửi thông báo đẩy (Push)
                 await _bookingHubService.SendStatusUpdateAsync(
@@ -1177,11 +1191,14 @@ namespace Infrastructure.Services.Booking
                 // Gửi thông báo đẩy cho bên đối tác
                 if (isCustomer && booking.WorkerProfile != null)
                 {
+                    var workerBody = resultDto.WorkerCompensation > 0
+                        ? $"Đơn hàng #{booking.Id.ToString()[..8]} đã bị hủy bởi khách hàng. Bạn nhận {resultDto.WorkerCompensation:N0}đ bù chi phí đi lại."
+                        : $"Đơn hàng #{booking.Id.ToString()[..8]} đã bị hủy bởi khách hàng.";
                     await _notificationService.SendNotificationAsync(
                         booking.WorkerProfile.UserId,
                         NotificationType.Booking,
                         "Khách hàng đã hủy lịch hẹn",
-                        $"Đơn hàng #{booking.Id.ToString()[..8]} đã bị hủy bởi khách hàng.",
+                        workerBody,
                         $"/worker/bookings/{bookingId}",
                         new { bookingId = bookingId, status = BookingStatus.Cancelled.ToString() },
                         cancellationToken: cancellationToken
@@ -1200,13 +1217,19 @@ namespace Infrastructure.Services.Booking
                     );
                 }
 
-                return OperationResult.Success("Hủy lịch hẹn thành công");
+                return OperationResult<CancelBookingResultDto>.Success(resultDto, "Hủy lịch hẹn thành công");
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException ex)
+            {
+                await _unitOfWork.RollbackTransactionAsync(cancellationToken);
+                _logger.LogWarning(ex, "Xung đột ví khi hủy lịch hẹn {BookingId}", bookingId);
+                return OperationResult<CancelBookingResultDto>.Failure("Dữ liệu vừa thay đổi, vui lòng thử lại.");
             }
             catch (Exception ex)
             {
                 await _unitOfWork.RollbackTransactionAsync(cancellationToken);
                 _logger.LogError(ex, "Lỗi xảy ra khi hủy lịch hẹn {BookingId}", bookingId);
-                return OperationResult.Failure("Có lỗi xảy ra trong quá trình xử lý yêu cầu hủy");
+                return OperationResult<CancelBookingResultDto>.Failure("Có lỗi xảy ra trong quá trình xử lý yêu cầu hủy");
             }
         }
 
