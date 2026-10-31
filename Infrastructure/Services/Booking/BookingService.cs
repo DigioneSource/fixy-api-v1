@@ -241,6 +241,12 @@ namespace Infrastructure.Services.Booking
                 return OperationResult.Failure($"Invalid status transition. Current status: {booking.Status}");
             }
 
+            // Mô hình trung gian: khách đã chọn KTV cụ thể — KTV khác không nhận thay được.
+            if (booking.WorkerProfileId.HasValue && booking.WorkerProfileId != workerProfile.Id)
+            {
+                return OperationResult.Failure("Đơn này không dành cho bạn.");
+            }
+
             return await TransitionStatusAsync(
                 bookingId,
                 expectedStatus,
@@ -267,7 +273,23 @@ namespace Infrastructure.Services.Booking
                         _matchingQueueRepository.Update(queueEntry);
                     }
                 },
-                cancellationToken
+                cancellationToken,
+                beforeTransition: async (booking) =>
+                {
+                    // CEO 31/10: đơn tiền mặt — ví KTV phải có ≥ 40% giá đơn; đủ thì tạm giữ phí + VAT
+                    // ngay trong lần lưu nhận đơn (cùng transaction với trạng thái Confirmed).
+                    await _bookingRepository.LoadWorkerAndPaymentOrderAsync(booking, cancellationToken);
+                    if (booking.PaymentOrder?.Method != PaymentMethod.Cash)
+                    {
+                        return OperationResult.Success();
+                    }
+
+                    return await _bookingFinanceService.HoldCashPlatformFeeAsync(
+                        booking,
+                        workerProfile.UserId,
+                        cancellationToken
+                    );
+                }
             );
         }
 
@@ -872,7 +894,8 @@ namespace Infrastructure.Services.Booking
             BookingStatus newStatus,
             string message,
             Func<BookingEntity, Task>? onTransition,
-            CancellationToken cancellationToken
+            CancellationToken cancellationToken,
+            Func<BookingEntity, Task<OperationResult>>? beforeTransition = null
         )
         {
             var booking = await _bookingRepository.GetByIdAsync(bookingId, cancellationToken);
@@ -895,6 +918,16 @@ namespace Infrastructure.Services.Booking
             )
             {
                 return OperationResult.Failure("Transition is not allowed");
+            }
+
+            // Kiểm tra có thể từ chối việc đổi trạng thái (VD: ký quỹ không đủ) — chạy trước mọi thay đổi.
+            if (beforeTransition != null)
+            {
+                var guardResult = await beforeTransition(booking);
+                if (!guardResult.IsSuccess)
+                {
+                    return guardResult;
+                }
             }
 
             booking.Status = newStatus;
@@ -1102,6 +1135,16 @@ namespace Infrastructure.Services.Booking
                     booking.PaymentOrder.RefundedAt = DateTime.UtcNow;
                     var paymentOrderRepository = _serviceProvider.GetRequiredService<IPaymentOrderRepository>();
                     paymentOrderRepository.Update(booking.PaymentOrder);
+                }
+
+                // B2. Đơn tiền mặt: hoàn khoản tạm giữ phí nền tảng về ví KTV (CEO 31/10)
+                if (booking.WorkerProfile != null)
+                {
+                    await _bookingFinanceService.ReleaseCashPlatformFeeAsync(
+                        booking,
+                        booking.WorkerProfile.UserId,
+                        cancellationToken
+                    );
                 }
 
                 // C. Làm sạch Hàng đợi Matching (Đánh dấu Skipped cho các Worker khác đang được offer đơn này)

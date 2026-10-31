@@ -24,5 +24,22 @@ namespace Application.Interfaces.Services.Booking
             BookingEntity booking,
             CancellationToken cancellationToken = default
         );
+
+        /// <summary>
+        /// KTV nhận đơn tiền mặt: ví phải có ≥ CashDepositRate × giá đơn; đủ thì tạm giữ (phí + VAT).
+        /// Thiếu thì trả Failure, Data = { requiredBalance, currentBalance, shortfall }, không đổi gì.
+        /// </summary>
+        Task<OperationResult> HoldCashPlatformFeeAsync(
+            BookingEntity booking,
+            Guid workerUserId,
+            CancellationToken cancellationToken = default
+        );
+
+        /// <summary>Đơn bị huỷ: hoàn khoản tạm giữ phí nền tảng (nếu có) về ví KTV.</summary>
+        Task ReleaseCashPlatformFeeAsync(
+            BookingEntity booking,
+            Guid workerUserId,
+            CancellationToken cancellationToken = default
+        );
     }
 }
