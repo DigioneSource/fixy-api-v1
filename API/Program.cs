@@ -104,6 +104,8 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 // SignalR
 builder.Services.AddSignalR();
+// Health check cho Docker / giám sát (GET /health)
+builder.Services.AddHealthChecks();
 
 // Danh sách origin web được phép gọi API (app di động không cần CORS)
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
@@ -171,6 +173,7 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health");
 
 // Map SignalR Hubs
 app.MapHub<BookingHub>("/hubs/booking");

@@ -26,3 +26,10 @@ API/.env
 **/PublishProfiles/
 **/ServiceDependencies/
 .claude/
+
+# Tự host (Docker): bí mật và dữ liệu trên VPS
+.env
+.env.*
+!.env.example
+backups/
+secrets/
