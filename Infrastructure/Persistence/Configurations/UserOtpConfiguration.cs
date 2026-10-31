@@ -18,7 +18,15 @@ namespace Infrastructure.Persistence.Configurations
 
             builder.Property(x => x.IsVerified).HasDefaultValue(false);
 
+            builder.Property(x => x.Purpose).HasConversion<int>();
+
+            builder.Property(x => x.FailedAttempts).HasDefaultValue(0);
+
+            builder.Property(x => x.VerifyTokenHash).HasMaxLength(128);
+
             builder.HasIndex(x => x.Target);
+
+            builder.HasIndex(x => x.VerifyTokenHash);
         }
     }
 }

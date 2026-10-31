@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Application.Common;
+using Application.DTOs.Auth;
 using Application.Common.Models.Email;
 using Application.Interfaces;
 using Application.Interfaces.Repositories;
@@ -8,6 +10,7 @@ using Application.Interfaces.Services.Email;
 using Application.Interfaces.Services.Sms;
 using Domain.Entity;
 using Domain.Enum;
+using Infrastructure.Helpers;
 
 namespace Infrastructure.Services.Email
 {
@@ -54,38 +57,80 @@ namespace Infrastructure.Services.Email
             CancellationToken cancellationToken
         )
         {
+            if (string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(otpCode))
+            {
+                return OperationResult.Failure("Mã OTP không hợp lệ");
+            }
+
             target = NormalizeTarget(target);
 
-            var otp = await _userOtpRepository.GetLatestOtpAsync(
-                target,
-                otpCode,
-                cancellationToken
-            );
+            // Lấy mã mới nhất theo target (không lọc theo code) để đếm được lần nhập sai
+            var otp = await _userOtpRepository.GetLatestPendingOtpAsync(target, cancellationToken);
 
             if (otp == null)
             {
-                return OperationResult.Failure("Invalid OTP");
+                return OperationResult.Failure("Mã OTP không hợp lệ hoặc đã được sử dụng");
             }
 
-            if (otp.IsUsed)
-            {
-                return OperationResult.Failure("OTP already used");
-            }
-            if (otp.IsVerified)
-            {
-                return OperationResult.Failure("OTP already verified");
-            }
             if (otp.ExpiryDate < DateTime.UtcNow)
             {
-                return OperationResult.Failure("OTP expired");
+                otp.IsUsed = true;
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                return OperationResult.Failure("Mã OTP đã hết hạn, vui lòng yêu cầu mã mới");
             }
+
+            if (!CodeEquals(otp.OtpCode, otpCode.Trim()))
+            {
+                otp.FailedAttempts++;
+
+                if (otp.FailedAttempts >= OtpConstants.MaxFailedAttempts)
+                {
+                    otp.IsUsed = true;
+                    await _unitOfWork.SaveChangesAsync(cancellationToken);
+                    return OperationResult.Failure(
+                        $"Bạn đã nhập sai quá {OtpConstants.MaxFailedAttempts} lần, vui lòng yêu cầu mã mới"
+                    );
+                }
+
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+                var remaining = OtpConstants.MaxFailedAttempts - otp.FailedAttempts;
+                return OperationResult.Failure($"Mã OTP không đúng, bạn còn {remaining} lần thử");
+            }
+
+            var verifyToken = Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
 
             otp.IsUsed = true;
             otp.IsVerified = true;
+            otp.VerifiedAt = DateTime.UtcNow;
+            otp.VerifyTokenHash = TokenHasher.Hash(verifyToken);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            return OperationResult.Success("OTP verified successfully");
+            return new OperationResult
+            {
+                IsSuccess = true,
+                Message = "OTP verified successfully",
+                Data = new VerifyOtpResponseDto
+                {
+                    VerifyToken = verifyToken,
+                    ExpiresInSeconds = OtpConstants.VerifyTokenLifetimeMinutes * 60,
+                },
+            };
+        }
+
+        private static bool CodeEquals(string expected, string actual)
+        {
+            var a = Encoding.UTF8.GetBytes(expected);
+            var b = Encoding.UTF8.GetBytes(actual);
+
+            // FixedTimeEquals trả false ngay nếu khác độ dài; độ dài mã OTP cố định nên không lộ thông tin
+            return CryptographicOperations.FixedTimeEquals(a, b);
+        }
+
+        private static string Base64UrlEncode(byte[] bytes)
+        {
+            return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         }
 
         private async Task<OperationResult> SendOtpInternalAsync(
@@ -154,6 +199,7 @@ namespace Infrastructure.Services.Email
             {
                 Target = target,
                 OtpCode = otpCode,
+                Purpose = purpose,
                 CreatedDate = DateTime.UtcNow,
                 ExpiryDate = DateTime.UtcNow.AddMinutes(5),
                 IsUsed = false,

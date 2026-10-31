@@ -1010,21 +1010,21 @@ namespace Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = new Guid("a1f7d8c1-3e21-4a8c-9b11-2d7f4c5e1001"),
-                            CreatedDate = new DateTime(2026, 8, 25, 3, 44, 9, 542, DateTimeKind.Utc).AddTicks(3489),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 1, 21, 121, DateTimeKind.Utc).AddTicks(5050),
                             IsActive = true,
                             Name = "ADMIN"
                         },
                         new
                         {
                             Id = new Guid("b2e8c9d2-4f32-4b9d-8c22-3e8f5d6f2002"),
-                            CreatedDate = new DateTime(2026, 8, 25, 3, 44, 9, 542, DateTimeKind.Utc).AddTicks(3502),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 1, 21, 121, DateTimeKind.Utc).AddTicks(5050),
                             IsActive = true,
                             Name = "CUSTOMER"
                         },
                         new
                         {
                             Id = new Guid("c3f9d0e3-5a43-4cad-9d33-4f9a6e7f3003"),
-                            CreatedDate = new DateTime(2026, 8, 25, 3, 44, 9, 542, DateTimeKind.Utc).AddTicks(3507),
+                            CreatedDate = new DateTime(2026, 10, 31, 13, 1, 21, 121, DateTimeKind.Utc).AddTicks(5050),
                             IsActive = true,
                             Name = "WORKER"
                         });
@@ -1701,11 +1701,19 @@ namespace Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ConsumedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime>("CreatedDate")
                         .HasColumnType("datetime2");
 
                     b.Property<DateTime>("ExpiryDate")
                         .HasColumnType("datetime2");
+
+                    b.Property<int>("FailedAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
 
                     b.Property<bool>("IsUsed")
                         .ValueGeneratedOnAdd()
@@ -1722,6 +1730,9 @@ namespace Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
+                    b.Property<int>("Purpose")
+                        .HasColumnType("int");
+
                     b.Property<string>("Target")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -1733,11 +1744,20 @@ namespace Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("VerifyTokenHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Target");
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("VerifyTokenHash");
 
                     b.ToTable("UserOtps");
                 });

@@ -1,5 +1,6 @@
-﻿using Application.Interfaces.Repositories;
+using Application.Interfaces.Repositories;
 using Domain.Entity;
+using Domain.Enum;
 using Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,17 +22,6 @@ namespace Infrastructure.Persistence.Repositories
                 .FirstOrDefaultAsync(ct);
         }
 
-        public async Task<UserOtp?> GetVerifiedOtpAsync(
-            string target,
-            CancellationToken ct = default
-        )
-        {
-            return await _dbSet
-                .Where(x => x.Target == target && x.IsVerified && x.ExpiryDate > DateTime.UtcNow)
-                .OrderByDescending(x => x.CreatedDate)
-                .FirstOrDefaultAsync(ct);
-        }
-
         public async Task<List<UserOtp>> GetUnusedOtpsAsync(
             string target,
             CancellationToken ct = default
@@ -40,14 +30,35 @@ namespace Infrastructure.Persistence.Repositories
             return await _dbSet.Where(x => x.Target == target && !x.IsUsed).ToListAsync(ct);
         }
 
-        public async Task<UserOtp?> GetLatestOtpAsync(
+        public async Task<UserOtp?> GetLatestPendingOtpAsync(
             string target,
-            string otpCode,
             CancellationToken ct = default
         )
         {
             return await _dbSet
-                .Where(x => x.Target == target && x.OtpCode == otpCode && !x.IsUsed)
+                .Where(x => x.Target == target && !x.IsUsed && !x.IsVerified)
+                .OrderByDescending(x => x.CreatedDate)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        public async Task<UserOtp?> GetConsumableVerifiedOtpAsync(
+            string target,
+            EmailPurpose purpose,
+            string verifyTokenHash,
+            DateTime verifiedAfter,
+            CancellationToken ct = default
+        )
+        {
+            return await _dbSet
+                .Where(x =>
+                    x.Target == target
+                    && x.Purpose == purpose
+                    && x.IsVerified
+                    && x.ConsumedAt == null
+                    && x.VerifyTokenHash == verifyTokenHash
+                    && x.VerifiedAt != null
+                    && x.VerifiedAt > verifiedAfter
+                )
                 .OrderByDescending(x => x.CreatedDate)
                 .FirstOrDefaultAsync(ct);
         }

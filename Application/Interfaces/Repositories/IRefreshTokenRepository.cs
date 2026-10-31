@@ -10,5 +10,7 @@ namespace Application.Interfaces.Repositories
             string tokenHash,
             CancellationToken ct = default
         );
+
+        Task<List<RefreshToken>> GetActiveByUserIdAsync(Guid userId, CancellationToken ct = default);
     }
 }

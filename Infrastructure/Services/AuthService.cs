@@ -71,10 +71,19 @@ namespace Infrastructure.Services.Auth
             CancellationToken ct
         )
         {
-            var otp = await _userOtpRepository.GetVerifiedOtpAsync(request.Target, ct);
+            request.Target = NormalizeTarget(request.Target);
+
+            var otp = await GetConsumableOtpAsync(
+                request.Target,
+                EmailPurpose.Register,
+                request.VerifyToken,
+                ct
+            );
 
             if (otp == null)
-                return OperationResult<AuthResponseDto>.Failure("OTP is not verified");
+                return OperationResult<AuthResponseDto>.Failure(
+                    "Phiên xác thực OTP không hợp lệ hoặc đã hết hạn, vui lòng xác thực lại"
+                );
 
             var existedUser = await _userRepository.GetByTargetAsync(request.Target, ct);
 
@@ -102,6 +111,8 @@ namespace Infrastructure.Services.Auth
                 return OperationResult<AuthResponseDto>.Failure("Invalid email or phone number");
             }
             await _userRepository.AddAsync(user, ct);
+
+            otp.ConsumedAt = DateTime.UtcNow;
 
             var role =
                 request.RoleRegister == RoleRegister.Worker
@@ -568,10 +579,19 @@ namespace Infrastructure.Services.Auth
             CancellationToken ct
         )
         {
-            var otp = await _userOtpRepository.GetVerifiedOtpAsync(request.Target, ct);
+            request.Target = NormalizeTarget(request.Target);
+
+            var otp = await GetConsumableOtpAsync(
+                request.Target,
+                EmailPurpose.ForgotPassword,
+                request.VerifyToken,
+                ct
+            );
 
             if (otp == null)
-                return OperationResult.Failure("OTP is not verified");
+                return OperationResult.Failure(
+                    "Phiên xác thực OTP không hợp lệ hoặc đã hết hạn, vui lòng xác thực lại"
+                );
 
             var user = await _userRepository.GetByTargetAsync(request.Target, ct);
 
@@ -580,9 +600,44 @@ namespace Infrastructure.Services.Auth
 
             user.PasswordHash = _passwordHasher.HashPassword(request.NewPassword);
 
+            otp.ConsumedAt = DateTime.UtcNow;
+
+            // Đổi mật khẩu qua OTP => đăng xuất mọi phiên đang có
+            var activeTokens = await _refreshTokenRepository.GetActiveByUserIdAsync(user.Id, ct);
+            foreach (var token in activeTokens)
+            {
+                token.IsRevoked = true;
+                token.RevokedAt = DateTime.UtcNow;
+                token.RevokedReason = "Password reset";
+            }
+
             await _unitOfWork.SaveChangesAsync(ct);
 
             return OperationResult.Success("Reset Password Success");
+        }
+
+        private async Task<UserOtp?> GetConsumableOtpAsync(
+            string target,
+            EmailPurpose purpose,
+            string? verifyToken,
+            CancellationToken ct
+        )
+        {
+            if (string.IsNullOrWhiteSpace(verifyToken))
+                return null;
+
+            return await _userOtpRepository.GetConsumableVerifiedOtpAsync(
+                target,
+                purpose,
+                TokenHasher.Hash(verifyToken.Trim()),
+                DateTime.UtcNow.AddMinutes(-OtpConstants.VerifyTokenLifetimeMinutes),
+                ct
+            );
+        }
+
+        private static string NormalizeTarget(string? target)
+        {
+            return (target ?? string.Empty).Trim().ToLower();
         }
 
         private bool IsEmail(string target)

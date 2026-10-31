@@ -30,5 +30,13 @@ namespace Infrastructure.Persistence.Repositories
                         .ThenInclude(x => x.Role)
                 .FirstOrDefaultAsync(x => x.TokenHash == tokenHash && !x.IsRevoked, ct);
         }
+
+        public async Task<List<RefreshToken>> GetActiveByUserIdAsync(
+            Guid userId,
+            CancellationToken ct = default
+        )
+        {
+            return await _dbSet.Where(x => x.UserId == userId && !x.IsRevoked).ToListAsync(ct);
+        }
     }
 }
