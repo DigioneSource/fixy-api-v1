@@ -20,6 +20,12 @@ namespace Application.Settings
         /// <summary>Tiền tố nội dung chuyển khoản để nhận ra đơn của TAYZEN.</summary>
         public string CodePrefix { get; set; } = "TZ";
 
+        /// <summary>
+        /// Chuỗi ngân hàng bắt buộc đứng đầu nội dung để SePay nhận được giao dịch.
+        /// VietinBank cá nhân / hộ kinh doanh: "SEVQR" (thiếu là SePay KHÔNG thấy giao dịch — 21/11/2026).
+        /// </summary>
+        public string ContentPrefix { get; set; } = "SEVQR";
+
         public bool IsConfigured =>
             !string.IsNullOrWhiteSpace(BankCode) && !string.IsNullOrWhiteSpace(AccountNumber);
     }

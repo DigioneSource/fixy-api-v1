@@ -125,6 +125,7 @@ services:
       SePay__AccountNumber: ${SePay__AccountNumber:-}
       SePay__AccountName: ${SePay__AccountName:-}
       SePay__CodePrefix: ${SePay__CodePrefix:-TZ}
+      SePay__ContentPrefix: ${SePay__ContentPrefix:-SEVQR}
 
       # --- Email OTP (SMTP)
       SmtpSettings__Host: ${SmtpSettings__Host:-}

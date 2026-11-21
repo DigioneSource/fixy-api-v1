@@ -113,8 +113,7 @@ namespace Infrastructure.Services.Booking
             var activeWorkers = await _workerProfileRepository.FindAsync(
                 wp =>
                     eligibleWorkerProfileIds.Contains(wp.Id)
-                    && wp.Status == WorkerStatus.Approved
-                    && wp.IsDepositPaid, // Chỉ KTV đã nạp đủ cọc ký quỹ mới được nhận ca
+                    && wp.Status == WorkerStatus.Approved, // 21/11/2026: bỏ cọc kích hoạt
                 cancellationToken
             );
 

@@ -89,6 +89,8 @@ namespace Tests
         [InlineData("NGUYEN VAN A chuyen tien tz1234567890 FT2611", 1234567890L)]
         [InlineData("MBVCB.123.TZ 1234567890.CT", 1234567890L)]
         [InlineData("TZ-1234567890", 1234567890L)]
+        [InlineData("SEVQR TZ1234567890", 1234567890L)]
+        [InlineData("IBFT SEVQR TZ1234567890 FT26325", 1234567890L)]
         [InlineData("TZ123456789", null)]
         [InlineData("TZ12345678901", null)]
         [InlineData("thanh toan don 1234567890", null)]
@@ -112,8 +114,8 @@ namespace Tests
             var url = await new SePayGatewayService(Options.Create(Settings())).CreatePaymentUrlAsync(order, default);
             Assert.NotNull(order.GatewayOrderCode);
             Assert.InRange(order.GatewayOrderCode!.Value, 1_000_000_000L, 9_999_999_999L);
-            Assert.StartsWith("https://qr.sepay.vn/img?acc=0123456789&bank=MBBank&amount=250000&des=TZ", url);
-            Assert.Contains($"des=TZ{order.GatewayOrderCode}", url);
+            Assert.StartsWith("https://qr.sepay.vn/img?acc=0123456789&bank=MBBank&amount=250000&des=SEVQR%20TZ", url);
+            Assert.Contains($"des=SEVQR%20TZ{order.GatewayOrderCode}", url);
         }
 
         [Fact]

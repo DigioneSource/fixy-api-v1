@@ -431,12 +431,7 @@ namespace Infrastructure.Services
                     );
                 }
 
-                if (!workerProfile.IsDepositPaid)
-                {
-                    return OperationResult<BookingDraftConfirmedDto>.Failure(
-                        "Kỹ thuật viên chưa hoàn tất ký quỹ dịch vụ, tạm thời không thể nhận lịch hẹn mới."
-                    );
-                }
+                // 21/11/2026 CEO: bỏ cọc kích hoạt; đơn tiền mặt kiểm số dư bảo đảm 40% lúc KTV nhận đơn.
 
                 if (!workerProfile.IsAcceptingJobs)
                 {

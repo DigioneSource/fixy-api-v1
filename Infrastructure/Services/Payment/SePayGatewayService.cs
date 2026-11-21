@@ -46,8 +46,11 @@ public class SePayGatewayService : IPaymentGateway
     public static long NewOrderCode() =>
         1_000_000_000L + (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() % 9_000_000_000L);
 
-    public static string TransferContent(SePaySettings s, long code) =>
-        $"{(string.IsNullOrWhiteSpace(s.CodePrefix) ? "TZ" : s.CodePrefix.Trim().ToUpperInvariant())}{code}";
+    public static string TransferContent(SePaySettings s, long code)
+    {
+        var tz = $"{(string.IsNullOrWhiteSpace(s.CodePrefix) ? "TZ" : s.CodePrefix.Trim().ToUpperInvariant())}{code}";
+        return string.IsNullOrWhiteSpace(s.ContentPrefix) ? tz : $"{s.ContentPrefix.Trim().ToUpperInvariant()} {tz}";
+    }
 
     /// <summary>
     /// Link ảnh VietQR của SePay. App đọc lại các tham số (acc, bank, amount, des, name)

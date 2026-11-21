@@ -1426,8 +1426,8 @@ namespace Infrastructure.Services
                 return OperationResult.Failure("Worker profile not found.");
             }
 
-            // Kiểm tra tiền cọc ký quỹ trước khi cho phép bật nhận việc
-            if (dto.IsAcceptingJobs.HasValue && dto.IsAcceptingJobs.Value)
+            // 21/11/2026 CEO: bỏ cọc kích hoạt — không chặn bật nhận việc vì chưa nạp cọc.
+            if (false && dto.IsAcceptingJobs.HasValue && dto.IsAcceptingJobs.Value)
             {
                 if (!worker.IsDepositPaid)
                 {

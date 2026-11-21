@@ -168,7 +168,7 @@ namespace Infrastructure.Repositories
                 .AsNoTracking()
                 .Where(x =>
                     x.Status == Domain.Enum.WorkerStatus.Approved
-                    && x.IsDepositPaid
+                    // 21/11/2026 CEO: bỏ cọc kích hoạt — đơn tiền mặt đã có số dư bảo đảm 40%.
                     && x.IsAcceptingJobs
                     && x.User != null
                     && x.User.IsActive
