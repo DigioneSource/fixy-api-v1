@@ -29,6 +29,12 @@ namespace Application.Interfaces.Services.Payment
             CancellationToken cancellationToken
         );
 
+        Task<OperationResult<bool>> HandleSePayIncomingAsync(
+            SePayWebhookDto webhook,
+            string? authorizationHeader,
+            CancellationToken cancellationToken
+        );
+
         Task<OperationResult<string>> CreateWorkerDepositPaymentUrlAsync(
             Guid workerUserId,
             PaymentMethod method,

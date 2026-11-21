@@ -21,6 +21,7 @@ namespace Infrastructure.Services.Payment
                 PaymentMethod.Momo => _serviceProvider.GetRequiredService<MoMoService>(),
                 PaymentMethod.PayOS => _serviceProvider.GetRequiredService<PayOSService>(),
                 PaymentMethod.Card => _serviceProvider.GetRequiredService<PayOSService>(),
+                PaymentMethod.SePay => _serviceProvider.GetRequiredService<SePayGatewayService>(),
                 _ => _serviceProvider.GetRequiredService<PayOSService>(),
             };
         }

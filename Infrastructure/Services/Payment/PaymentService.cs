@@ -41,6 +41,8 @@ namespace Infrastructure.Services.Payment
 
         private readonly IWorkerServiceRepository _workerServiceRepository;
 
+        private readonly Application.Settings.SePaySettings _sePaySettings;
+
         public PaymentService(
             IPaymentOrderRepository paymentOrderRepository,
             ICustomerProfileRepository customerProfileRepository,
@@ -53,9 +55,12 @@ namespace Infrastructure.Services.Payment
             IHubContext<NotificationHub> hubContext,
             ILogger<PaymentService> logger,
             IWorkerProfileRepository workerProfileRepository,
-            IWorkerServiceRepository workerServiceRepository
+            IWorkerServiceRepository workerServiceRepository,
+            Microsoft.Extensions.Options.IOptions<Application.Settings.SePaySettings> sePayOptions
         )
         {
+            _sePaySettings = sePayOptions.Value;
+
             _paymentOrderRepository = paymentOrderRepository;
 
             _customerProfileRepository = customerProfileRepository;
@@ -110,9 +115,9 @@ namespace Infrastructure.Services.Payment
 
             await _paymentOrderRepository.AddAsync(order, cancellationToken);
 
-            var gateway = _paymentGatewayFactory.Get(method);
-
-            var paymentUrl = await gateway.CreatePaymentUrlAsync(order, cancellationToken);
+            var (paymentUrl, gatewayError) = await CreateGatewayUrlAsync(method, order, cancellationToken);
+            if (gatewayError != null)
+                return OperationResult<string>.Failure(gatewayError);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -227,9 +232,9 @@ namespace Infrastructure.Services.Payment
                 return OperationResult<string>.Success(string.Empty);
             }
 
-            var gateway = _paymentGatewayFactory.Get(method);
-
-            var paymentUrl = await gateway.CreatePaymentUrlAsync(order, cancellationToken);
+            var (paymentUrl, gatewayError) = await CreateGatewayUrlAsync(method, order, cancellationToken);
+            if (gatewayError != null)
+                return OperationResult<string>.Failure(gatewayError);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
@@ -555,71 +560,7 @@ namespace Infrastructure.Services.Payment
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
-            // 6. Send real-time notification to Mobile App via SignalR
-            try
-            {
-                await _hubContext.Clients
-                    .User(order.UserId.ToString())
-                    .SendAsync("PaymentCompleted", new
-                    {
-                        OrderId = order.Id,
-                        BookingId = order.BookingId,
-                        Amount = order.FinalAmount,
-                        Status = "Paid",
-                        Reference = data.Reference
-                    }, cancellationToken);
-
-                _logger.LogInformation(
-                    "SignalR PaymentCompleted sent to user {UserId} for OrderCode {OrderCode}",
-                    order.UserId, data.OrderCode);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "Failed to send SignalR PaymentCompleted to user {UserId}",
-                    order.UserId);
-            }
-
-            // 7. Send Push Notification (Firebase FCM) + save to notification DB
-            try
-            {
-                var notifTitle = order.Type switch
-                {
-                    PaymentOrderType.WalletTopUp => "Nạp ví thành công!",
-                    PaymentOrderType.WorkerWalletTopUp => "Nạp số dư bảo đảm thành công!",
-                    PaymentOrderType.WorkerDeposit => "Nạp cọc kích hoạt thành công!",
-                    _ => "Thanh toán thành công!"
-                };
-
-                var notifBody = order.Type switch
-                {
-                    PaymentOrderType.WalletTopUp => $"Bạn đã nạp thành công {order.FinalAmount:N0}đ vào Ví Fixy qua PayOS.",
-                    PaymentOrderType.WorkerWalletTopUp => $"Bạn đã nạp {order.FinalAmount:N0}đ vào ví KTV. Số dư này bảo đảm phí nền tảng cho đơn tiền mặt.",
-                    PaymentOrderType.WorkerDeposit => $"Bạn đã nạp cọc ký quỹ {order.FinalAmount:N0}đ thành công. Tài khoản đã được kích hoạt nhận lịch hẹn Spa!",
-                    _ => $"Đơn dịch vụ của bạn đã được thanh toán {order.FinalAmount:N0}đ và đang chờ Kỹ thuật viên tiếp nhận."
-                };
-
-                var deepLink = order.BookingId.HasValue
-                    ? $"/booking-detail?bookingId={order.BookingId.Value}"
-                    : "/wallet";
-
-                await _notificationService.SendNotificationAsync(
-                    order.UserId,
-                    NotificationType.Payment,
-                    notifTitle,
-                    notifBody,
-                    deepLink,
-                    new { orderId = order.Id, bookingId = order.BookingId, amount = order.FinalAmount },
-                    null,
-                    cancellationToken
-                );
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex,
-                    "Failed to send payment notification for OrderCode {OrderCode}",
-                    data.OrderCode);
-            }
+            await NotifyPaymentSuccessAsync(order, data.Reference, data.OrderCode.ToString(), cancellationToken);
 
             return OperationResult<bool>.Success(true, "Payment success");
             }
@@ -681,12 +622,152 @@ namespace Infrastructure.Services.Payment
             await _paymentOrderRepository.AddAsync(order, cancellationToken);
 
             // 4. Sinh mã VietQR / Checkout URL qua cổng thanh toán
-            var gateway = _paymentGatewayFactory.Get(method);
-            var paymentUrl = await gateway.CreatePaymentUrlAsync(order, cancellationToken);
+            var (paymentUrl, gatewayError) = await CreateGatewayUrlAsync(method, order, cancellationToken);
+            if (gatewayError != null)
+                return OperationResult<string>.Failure(gatewayError);
 
             await _unitOfWork.SaveChangesAsync(cancellationToken);
 
             return OperationResult<string>.Success(paymentUrl);
+        }
+
+        /// <summary>Gọi cổng thanh toán; lỗi cấu hình (vd. SePay chưa điền tài khoản) trả về thông báo thay vì lỗi 500.</summary>
+        private async Task<(string Url, string? Error)> CreateGatewayUrlAsync(
+            PaymentMethod method,
+            PaymentOrder order,
+            CancellationToken cancellationToken
+        )
+        {
+            try
+            {
+                var gateway = _paymentGatewayFactory.Get(method);
+                return (await gateway.CreatePaymentUrlAsync(order, cancellationToken), null);
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogError(ex, "Payment gateway {Method} is not configured", method);
+                return (string.Empty, "Phương thức thanh toán này tạm thời chưa dùng được. Vui lòng chọn cách khác.");
+            }
+        }
+
+        /// <summary>
+        /// Tiền chuyển khoản về qua SePay (TransferType = "in"). Khớp mã TZxxxxxxxxxx trong nội dung
+        /// với PaymentOrder.GatewayOrderCode, đối chiếu ĐÚNG số tiền, rồi ghi nhận đã thanh toán.
+        /// Token webhook là BẮT BUỘC: không cấu hình token = từ chối (ai cũng giả được "tiền về").
+        /// </summary>
+        public async Task<OperationResult<bool>> HandleSePayIncomingAsync(
+            SePayWebhookDto webhook,
+            string? authorizationHeader,
+            CancellationToken cancellationToken
+        )
+        {
+            if (!SePayGatewayService.IsValidWebhookToken(_sePaySettings.WebhookToken, authorizationHeader))
+            {
+                _logger.LogWarning("SePay incoming webhook rejected: invalid or unconfigured token");
+                return OperationResult<bool>.Failure("Unauthorized");
+            }
+
+            var code = SePayGatewayService.TryParseOrderCode(webhook.Content, _sePaySettings.CodePrefix);
+            if (code == null)
+                return OperationResult<bool>.Success(true, "Not a TAYZEN transfer");
+
+            var order = await _paymentOrderRepository.GetByGatewayOrderCodeAsync(code.Value, cancellationToken);
+            if (order == null || order.Method != PaymentMethod.SePay)
+            {
+                _logger.LogWarning("SePay incoming: no SePay order for code {Code} (txn {TxnId})", code, webhook.Id);
+                return OperationResult<bool>.Success(true, "Order not found");
+            }
+
+            if (order.Status == PaymentStatus.Paid)
+                return OperationResult<bool>.Success(true, "Already processed");
+
+            order.GatewayResponse = JsonSerializer.Serialize(webhook);
+
+            if (webhook.TransferAmount != order.FinalAmount)
+            {
+                _logger.LogWarning(
+                    "SePay amount mismatch for order {OrderId} (code {Code}): received={Received}, expected={Expected}. NOT marked paid.",
+                    order.Id, code, webhook.TransferAmount, order.FinalAmount);
+                _paymentOrderRepository.Update(order);
+                await _unitOfWork.SaveChangesAsync(cancellationToken);
+                return OperationResult<bool>.Success(true, "Amount mismatch recorded");
+            }
+
+            order.Status = PaymentStatus.Paid;
+            order.PaidAt = DateTime.UtcNow;
+            order.ExternalTransactionId = webhook.Id.ToString();
+            order.GatewayRef = webhook.ReferenceCode;
+            _paymentOrderRepository.Update(order);
+
+            await ProcessSuccessfulPaymentAsync(order, cancellationToken);
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            await NotifyPaymentSuccessAsync(order, webhook.ReferenceCode, code.Value.ToString(), cancellationToken);
+            return OperationResult<bool>.Success(true, "Payment success");
+        }
+
+        private async Task NotifyPaymentSuccessAsync(
+            PaymentOrder order,
+            string? reference,
+            string orderCodeForLog,
+            CancellationToken cancellationToken
+        )
+        {
+            try
+            {
+                await _hubContext.Clients
+                    .User(order.UserId.ToString())
+                    .SendAsync("PaymentCompleted", new
+                    {
+                        OrderId = order.Id,
+                        BookingId = order.BookingId,
+                        Amount = order.FinalAmount,
+                        Status = "Paid",
+                        Reference = reference
+                    }, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send SignalR PaymentCompleted to user {UserId}", order.UserId);
+            }
+
+            try
+            {
+                var notifTitle = order.Type switch
+                {
+                    PaymentOrderType.WalletTopUp => "Nạp ví thành công!",
+                    PaymentOrderType.WorkerWalletTopUp => "Nạp số dư bảo đảm thành công!",
+                    PaymentOrderType.WorkerDeposit => "Nạp cọc kích hoạt thành công!",
+                    _ => "Thanh toán thành công!"
+                };
+
+                var notifBody = order.Type switch
+                {
+                    PaymentOrderType.WalletTopUp => $"Bạn đã nạp thành công {order.FinalAmount:N0}đ vào ví TAYZEN.",
+                    PaymentOrderType.WorkerWalletTopUp => $"Bạn đã nạp {order.FinalAmount:N0}đ vào ví KTV. Số dư này bảo đảm phí nền tảng cho đơn tiền mặt.",
+                    PaymentOrderType.WorkerDeposit => $"Bạn đã nạp {order.FinalAmount:N0}đ số dư bảo đảm thành công.",
+                    _ => $"Đơn dịch vụ của bạn đã được thanh toán {order.FinalAmount:N0}đ và đang chờ Kỹ thuật viên tiếp nhận."
+                };
+
+                var deepLink = order.BookingId.HasValue
+                    ? $"/booking-detail?bookingId={order.BookingId.Value}"
+                    : "/wallet";
+
+                await _notificationService.SendNotificationAsync(
+                    order.UserId,
+                    NotificationType.Payment,
+                    notifTitle,
+                    notifBody,
+                    deepLink,
+                    new { orderId = order.Id, bookingId = order.BookingId, amount = order.FinalAmount },
+                    null,
+                    cancellationToken
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to send payment notification for OrderCode {OrderCode}", orderCodeForLog);
+            }
         }
     }
 }

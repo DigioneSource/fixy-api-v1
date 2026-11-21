@@ -121,6 +121,10 @@ services:
       PayOSSetings__ReturnUrl: ${PayOSSetings__ReturnUrl:-}
       PayOSSetings__CancelUrl: ${PayOSSetings__CancelUrl:-}
       SePay__WebhookToken: ${SePay__WebhookToken:-}
+      SePay__BankCode: ${SePay__BankCode:-}
+      SePay__AccountNumber: ${SePay__AccountNumber:-}
+      SePay__AccountName: ${SePay__AccountName:-}
+      SePay__CodePrefix: ${SePay__CodePrefix:-TZ}
 
       # --- Email OTP (SMTP)
       SmtpSettings__Host: ${SmtpSettings__Host:-}

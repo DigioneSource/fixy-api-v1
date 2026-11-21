@@ -90,6 +90,7 @@ namespace Infrastructure
             services.Configure<VNPaySettings>(configuration.GetSection("VnPaySettings"));
             services.Configure<MoMoSettings>(configuration.GetSection("MoMoSettings"));
             services.Configure<PayOSSettings>(configuration.GetSection("PayOSSetings"));
+            services.Configure<SePaySettings>(configuration.GetSection("SePay"));
 
             // Cloudinary Settings
             services.Configure<CloudinarySettings>(configuration.GetSection("CloudinarySettings"));
@@ -234,6 +235,7 @@ namespace Infrastructure
             services.AddScoped<MoMoService>();
             services.AddScoped<VnPayService>();
             services.AddScoped<PayOSService>();
+            services.AddScoped<SePayGatewayService>();
 
             services.AddScoped<IPaymentGatewayFactory, PaymentGatewayFactory>();
             services.AddScoped<IPaymentService, PaymentService>();

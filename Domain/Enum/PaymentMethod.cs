@@ -16,5 +16,7 @@ namespace Domain.Enum
         Card = 4,
         [Description("Tiền mặt")]
         Cash = 5,
+        [Description("Chuyển khoản QR")]
+        SePay = 6,
     }
 }

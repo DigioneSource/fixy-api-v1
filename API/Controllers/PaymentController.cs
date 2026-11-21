@@ -156,6 +156,20 @@ namespace API.Controllers
             CancellationToken cancellationToken
         )
         {
+            // Tiền VÀO (khách/KTV chuyển khoản QR) → ghi nhận thanh toán; tiền RA → đối soát chi trả KTV.
+            if (string.Equals(webhook.TransferType, "in", StringComparison.OrdinalIgnoreCase))
+            {
+                var incoming = await _paymentService.HandleSePayIncomingAsync(
+                    webhook,
+                    authorizationHeader,
+                    cancellationToken
+                );
+                if (!incoming.IsSuccess)
+                    return Unauthorized(new { success = false });
+                // SePay coi giao dịch đã giao thành công khi nhận {"success": true} + HTTP 200.
+                return Ok(new { success = true });
+            }
+
             var result = await _payoutService.ProcessSePayWebhookAsync(
                 webhook,
                 authorizationHeader,
