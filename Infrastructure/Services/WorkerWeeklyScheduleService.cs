@@ -59,18 +59,9 @@ namespace Application.Services
                 CreateSchedule(workerProfileId, WeekDay.Wed),
                 CreateSchedule(workerProfileId, WeekDay.Thu),
                 CreateSchedule(workerProfileId, WeekDay.Fri),
-                new()
-                {
-                    WorkerProfileId = workerProfileId,
-                    DayOfWeek = WeekDay.Sat,
-                    IsActive = false,
-                },
-                new()
-                {
-                    WorkerProfileId = workerProfileId,
-                    DayOfWeek = WeekDay.Sun,
-                    IsActive = false,
-                },
+                // 21/11/2026: dịch vụ tại nhà đông nhất cuối tuần & buổi tối → mặc định làm cả tuần.
+                CreateSchedule(workerProfileId, WeekDay.Sat),
+                CreateSchedule(workerProfileId, WeekDay.Sun),
             };
 
             await _workerWeeklyScheduleRepository.AddRangeAsync(schedules);
@@ -137,7 +128,7 @@ namespace Application.Services
                 WorkerProfileId = workerProfileId,
                 DayOfWeek = day,
                 StartTime = new TimeOnly(8, 0),
-                EndTime = new TimeOnly(17, 0),
+                EndTime = new TimeOnly(22, 0),
                 IsActive = true,
             };
         }
