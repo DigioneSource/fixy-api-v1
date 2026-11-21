@@ -109,13 +109,13 @@ public class BookingFinanceServiceTests
         await ctx.SaveChangesAsync();
 
         Assert.True(result.IsSuccess);
-        Assert.Equal(165_000, booking.HeldPlatformFee);
-        Assert.Equal(35_000, wallet.Balance);
+        Assert.Equal(162_000, booking.HeldPlatformFee);
+        Assert.Equal(38_000, wallet.Balance);
         var tx = Assert.Single(ctx.WalletTransactions);
         Assert.Equal(WalletTransactionType.PlatformFeeHold, tx.Type);
         Assert.Equal(WalletDirection.Debit, tx.Direction);
         Assert.Equal(TransactionStatus.Pending, tx.Status);
-        Assert.Equal(165_000, tx.Amount);
+        Assert.Equal(162_000, tx.Amount);
     }
 
     [Fact]
@@ -155,9 +155,9 @@ public class BookingFinanceServiceTests
         await ctx.SaveChangesAsync();
 
         Assert.Equal(150_000, booking.PlatformFee);
-        Assert.Equal(15_000, booking.PlatformFeeVat);
-        Assert.Equal(335_000, booking.WorkerNet);
-        Assert.Equal(135_000, wallet.Balance);
+        Assert.Equal(12_000, booking.PlatformFeeVat);
+        Assert.Equal(338_000, booking.WorkerNet);
+        Assert.Equal(138_000, wallet.Balance);
         var tx = Assert.Single(ctx.WalletTransactions);
         Assert.Equal(WalletTransactionType.Fee, tx.Type);
         Assert.Equal(TransactionStatus.Success, tx.Status);
@@ -173,10 +173,10 @@ public class BookingFinanceServiceTests
         await NewService(ctx).SettleCompletedBookingAsync(booking);
         await ctx.SaveChangesAsync();
 
-        Assert.Equal(335_000, wallet.Balance);
+        Assert.Equal(338_000, wallet.Balance);
         var tx = Assert.Single(ctx.WalletTransactions);
         Assert.Equal(WalletTransactionType.BookingIncome, tx.Type);
-        Assert.Equal(165_000, tx.PlatformFee);
+        Assert.Equal(162_000, tx.PlatformFee);
     }
 
     private static async Task<Wallet> SeedCustomerWalletAsync(AppDbContext ctx, Guid userId)
@@ -286,7 +286,7 @@ public class BookingFinanceServiceTests
         await ctx.SaveChangesAsync();
 
         Assert.Equal(150_000, booking.PlatformFee);
-        Assert.Equal(335_000, booking.WorkerNet);
-        Assert.Equal(335_000, wallet.Balance);
+        Assert.Equal(338_000, booking.WorkerNet);
+        Assert.Equal(338_000, wallet.Balance);
     }
 }

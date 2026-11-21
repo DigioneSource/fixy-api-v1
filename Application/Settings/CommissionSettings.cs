@@ -11,8 +11,8 @@ namespace Application.Settings
         /// <summary>Phí nền tảng chưa thuế, tính trên giá dịch vụ trước voucher.</summary>
         public decimal PlatformFeeRate { get; set; } = 0.30m;
 
-        /// <summary>Thuế GTGT trên phí nền tảng.</summary>
-        public decimal VatRate { get; set; } = 0.10m;
+        /// <summary>Thuế GTGT trên phí nền tảng — CEO 21/11/2026: 8% (30% + 8% → KTV trả 32,4% giá dịch vụ).</summary>
+        public decimal VatRate { get; set; } = 0.08m;
 
         /// <summary>Số dư ví KTV tối thiểu (theo giá đơn) để nhận đơn tiền mặt.</summary>
         public decimal CashDepositRate { get; set; } = 0.40m;

@@ -12,11 +12,11 @@ public class PlatformFeeCalculatorTests
 
     [Theory]
     // giá, phí, VAT, KTV nhận — khớp calcCommission() của app
-    [InlineData(500_000, 150_000, 15_000, 335_000)]
-    [InlineData(350_000, 105_000, 10_500, 234_500)]
-    [InlineData(199_999, 60_000, 6_000, 133_999)]
+    [InlineData(500_000, 150_000, 12_000, 338_000)]
+    [InlineData(350_000, 105_000, 8_400, 236_600)]
+    [InlineData(199_999, 60_000, 4_800, 135_199)]
     [InlineData(0, 0, 0, 0)]
-    public void Calculate_PhiNenTang30PhanTramCongVat10PhanTram(
+    public void Calculate_PhiNenTang30PhanTramCongVat8PhanTram(
         long price,
         long fee,
         long vat,
