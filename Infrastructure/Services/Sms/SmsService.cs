@@ -49,6 +49,71 @@ namespace Infrastructure.Services.Sms
             }
         }
 
+        public async Task<bool> SendOtpAsync(string phoneNumber, string otpCode, string message, CancellationToken cancellationToken = default)
+        {
+            if (!_settings.UseMock && string.Equals(_settings.Provider, "ZnsRelay", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    return await SendViaZnsRelayAsync(phoneNumber, otpCode, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[ZNS RELAY ERROR] Thất bại khi gửi OTP tới {Phone}", MaskPhone(phoneNumber));
+                    return false;
+                }
+            }
+
+            return await SendSmsAsync(phoneNumber, message, cancellationToken);
+        }
+
+        /// <summary>
+        /// Gửi OTP qua trạm ZNS của ERP DIGIFNB (POST /api/internal/zns/otp, header X-Relay-Key).
+        /// ERP là nơi duy nhất giữ refresh token Zalo — không tự gọi Zalo từ đây.
+        /// BaseUrl = địa chỉ trạm, ApiKey = khoá trạm, SenderId = tên app đăng ký ở trạm.
+        /// </summary>
+        private async Task<bool> SendViaZnsRelayAsync(string phone, string otpCode, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(_settings.BaseUrl) || string.IsNullOrWhiteSpace(_settings.ApiKey))
+            {
+                _logger.LogError("[ZNS RELAY] Thiếu SmsSettings:BaseUrl hoặc SmsSettings:ApiKey");
+                return false;
+            }
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(_settings.TimeoutSeconds, 20));
+
+            var payload = new
+            {
+                app = string.IsNullOrWhiteSpace(_settings.SenderId) ? "tayzen" : _settings.SenderId.Trim().ToLowerInvariant(),
+                phone = phone.Trim(),
+                code = otpCode
+            };
+            var request = new HttpRequestMessage(HttpMethod.Post, _settings.BaseUrl)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            };
+            request.Headers.Add("X-Relay-Key", _settings.ApiKey);
+
+            var response = await client.SendAsync(request, ct);
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[ZNS RELAY] Đã gửi OTP qua Zalo tới {Phone}", MaskPhone(phone));
+                return true;
+            }
+
+            // body chỉ có lý do + mã lỗi Zalo, không chứa mã OTP
+            _logger.LogWarning("[ZNS RELAY] Trạm trả lỗi ({Status}) cho {Phone}: {Body}", (int)response.StatusCode, MaskPhone(phone), body);
+            return false;
+        }
+
+        private static string MaskPhone(string phone)
+        {
+            var digits = new string((phone ?? string.Empty).Where(char.IsDigit).ToArray());
+            return digits.Length >= 4 ? $"***{digits[^3..]}" : "***";
+        }
+
         private void LogMockSms(string phone, string message)
         {
             _logger.LogInformation("\n======================================================\n" +

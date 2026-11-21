@@ -238,8 +238,8 @@ namespace Infrastructure.Services.Email
 
             if (IsPhone(target))
             {
-                var smsContent = $"[FIXY] Ma OTP xac thuc cua ban la: {otpCode}. Ma co hieu luc trong 5 phut. Vui long khong chia se ma nay voi ai.";
-                await _smsService.SendSmsAsync(target, smsContent, cancellationToken);
+                var smsContent = $"[TAYZEN] Ma OTP xac thuc cua ban la: {otpCode}. Ma co hieu luc trong 5 phut. Vui long khong chia se ma nay voi ai.";
+                await _smsService.SendOtpAsync(target, otpCode, smsContent, cancellationToken);
             }
 
             return OperationResult.Success("OTP sent successfully");
