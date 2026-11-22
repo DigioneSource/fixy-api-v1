@@ -8,7 +8,7 @@ namespace Infrastructure.Services.Payment;
 
 /// <summary>
 /// "Cổng" chuyển khoản QR qua SePay: không gọi API nào — sinh mã nội dung chuyển khoản
-/// (TZ + số) gắn vào đơn và trả link ảnh VietQR. Tiền về thì SePay gọi webhook
+/// (TAYZEN + số) gắn vào đơn và trả link ảnh VietQR. Tiền về thì SePay gọi webhook
 /// /api/payment/webhook/sepay (TransferType = "in") → PaymentService.HandleSePayIncomingAsync.
 /// </summary>
 public class SePayGatewayService : IPaymentGateway
@@ -48,7 +48,7 @@ public class SePayGatewayService : IPaymentGateway
 
     public static string TransferContent(SePaySettings s, long code)
     {
-        var tz = $"{(string.IsNullOrWhiteSpace(s.CodePrefix) ? "TZ" : s.CodePrefix.Trim().ToUpperInvariant())}{code}";
+        var tz = $"{(string.IsNullOrWhiteSpace(s.CodePrefix) ? "TAYZEN" : s.CodePrefix.Trim().ToUpperInvariant())} {code}";
         return string.IsNullOrWhiteSpace(s.ContentPrefix) ? tz : $"{s.ContentPrefix.Trim().ToUpperInvariant()} {tz}";
     }
 
@@ -72,7 +72,11 @@ public class SePayGatewayService : IPaymentGateway
     public static long? TryParseOrderCode(string? content, string? prefix)
     {
         if (string.IsNullOrWhiteSpace(content)) return null;
-        var p = Regex.Escape(string.IsNullOrWhiteSpace(prefix) ? "TZ" : prefix.Trim());
+        // CEO duyệt bảng mã 22/11: phát TAYZEN; TZ (mã cũ khách đang cầm) và tiền tố cấu hình vẫn nhận.
+        var names = new[] { string.IsNullOrWhiteSpace(prefix) ? "TAYZEN" : prefix.Trim(), "TAYZEN", "TZ" }
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(Regex.Escape);
+        var p = $"(?:{string.Join("|", names)})";
         var m = Regex.Match(content, $@"(?<![A-Za-z0-9]){p}[\s\-_.]?(\d{{10}})(?!\d)", RegexOptions.IgnoreCase);
         if (!m.Success)
             m = Regex.Match(content, $@"{p}[\s\-_.]?(\d{{10}})(?!\d)", RegexOptions.IgnoreCase);

@@ -124,7 +124,7 @@ services:
       SePay__BankCode: ${SePay__BankCode:-}
       SePay__AccountNumber: ${SePay__AccountNumber:-}
       SePay__AccountName: ${SePay__AccountName:-}
-      SePay__CodePrefix: ${SePay__CodePrefix:-TZ}
+      SePay__CodePrefix: ${SePay__CodePrefix:-TAYZEN}
       SePay__ContentPrefix: ${SePay__ContentPrefix:-SEVQR}
 
       # --- Email OTP (SMTP)

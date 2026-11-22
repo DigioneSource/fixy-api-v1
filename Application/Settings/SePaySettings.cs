@@ -18,7 +18,7 @@ namespace Application.Settings
         public string WebhookToken { get; set; } = string.Empty;
 
         /// <summary>Tiền tố nội dung chuyển khoản để nhận ra đơn của TAYZEN.</summary>
-        public string CodePrefix { get; set; } = "TZ";
+        public string CodePrefix { get; set; } = "TAYZEN";
 
         /// <summary>
         /// Chuỗi ngân hàng bắt buộc đứng đầu nội dung để SePay nhận được giao dịch.
